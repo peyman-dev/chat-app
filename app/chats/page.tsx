@@ -1,9 +1,9 @@
-import React from 'react'
+import EmptyChat from '@/components/templates/chats/empty-chat'
 
 const page = () => {
-  return (
-    <div>page</div>
-  )
+  return <>
+    <EmptyChat />
+  </>
 }
 
 export default page
