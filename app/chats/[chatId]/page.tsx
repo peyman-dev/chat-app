@@ -1,8 +1,8 @@
-import React from 'react'
+import ChatThread from '@/components/templates/chats/chat-thread'
 
 const page = () => {
   return (
-    <div>page</div>
+    <ChatThread />
   )
 }
 
