@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { nanoid } from "nanoid";
 import { useParams, useRouter } from "next/navigation";
 import { motion } from "motion/react";
+import { useTheme } from "@/components/providers/theme-provider";
 import { useChatStore } from "@/lib/stores/chat-store";
 import ChatHistorySection, { SidebarChatItem } from "./chat-history-section";
 import MobileSidebarDrawer from "./mobile-sidebar-drawer";
@@ -19,9 +20,7 @@ const Sidebar = () => {
   const summaries = useChatStore((state) => state.summaries);
   const createChat = useChatStore((state) => state.createChat);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
-  const [isDarkMode, setIsDarkMode] = useState(
-    typeof document !== "undefined" ? document.documentElement.classList.contains("dark") : false,
-  );
+  const { isDarkMode, toggleTheme } = useTheme();
 
   const activeChatId = useMemo(() => {
     const chatId = params?.chatId;
@@ -54,21 +53,12 @@ const Sidebar = () => {
     setIsDrawerOpen(false);
   };
 
-  const handleToggleTheme = () => {
-    const root = document.documentElement;
-    const nextDarkMode = !root.classList.contains("dark");
-
-    root.classList.toggle("dark", nextDarkMode);
-    setIsDarkMode(nextDarkMode);
-    window.localStorage.setItem("theme", nextDarkMode ? "dark" : "light");
-  };
-
   const sidebarBody = (
     <SidebarContainer>
       <SidebarHeader onMenuClick={() => setIsDrawerOpen(false)} />
       <NewChatButton onClick={handleCreateChat} />
       <ChatHistorySection items={chatItems} activeChatId={activeChatId} onSelect={handleSelectChat} />
-      <SidebarFooter isDarkMode={isDarkMode} onToggleTheme={handleToggleTheme} />
+      <SidebarFooter isDarkMode={isDarkMode} onToggleTheme={toggleTheme} />
     </SidebarContainer>
   );
 
