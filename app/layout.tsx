@@ -1,6 +1,10 @@
 import type { Metadata } from "next";
 import "./globals.css";
 
+export const metadata: Metadata = {
+  title: "Chat App",
+  description: "رابط کاربری مدرن چت با پشتیبانی از تم روشن و تاریک",
+};
 
 export default function RootLayout({
   children,
@@ -11,8 +15,11 @@ export default function RootLayout({
     <html
       lang="fa-IR"
       dir="rtl"
+      suppressHydrationWarning
     >
-      <body className="min-h-full flex flex-col">{children}</body>
+      <body className="min-h-screen  antialiased">
+          {children}
+      </body>
     </html>
   );
 }
