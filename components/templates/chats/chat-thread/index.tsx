@@ -1,13 +1,16 @@
 "use client";
 
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { useParams } from "next/navigation";
+import ChatMessage from "@/components/templates/chats/chat-thread/chat-message";
 import { useChatStore } from "@/lib/stores/chat-store";
 
 const EMPTY_MESSAGES: ReturnType<typeof useChatStore.getState>["chats"][string] = [];
 
 const ChatThread = () => {
   const params = useParams<{ chatId?: string | string[] }>();
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const hasInitialScroll = useRef(false);
 
   const activeChatId = useMemo(() => {
     const value = params?.chatId;
@@ -23,17 +26,39 @@ const ChatThread = () => {
     activeChatId ? (state.chats[activeChatId] ?? EMPTY_MESSAGES) : EMPTY_MESSAGES,
   );
 
+  useEffect(() => {
+    const node = scrollRef.current;
+
+    if (!node) {
+      return;
+    }
+
+    const behavior = hasInitialScroll.current ? "smooth" : "auto";
+
+    node.scrollTo({
+      top: node.scrollHeight,
+      behavior,
+    });
+
+    hasInitialScroll.current = true;
+  }, [activeChatId, messages.length]);
+
   return (
-    <div className="mx-auto flex h-full w-full max-w-[1400px] flex-col px-6 pb-44 pt-8">
-      <div className="flex-1 overflow-y-auto">
-        <div className="flex flex-col gap-4">
-          {messages.map((message) => (
-            <div key={message.id} className="flex justify-end">
-              <p className="max-w-[80%] rounded-2xl bg-panel-strong px-4 py-3 text-base text-foreground shadow-sm">
-                {message.text}
-              </p>
-            </div>
-          ))}
+    <div className="mx-auto flex h-full w-full  flex-col px-4 pb-44  sm:px-6 lg:px-8">
+      <div ref={scrollRef} className="chats-scrollbar flex-1 overflow-y-auto">
+        <div className="flex flex-col px-1 pb-8 sm:px-2">
+          {messages.map((message, index) => {
+            const previous = messages[index - 1];
+            const groupedWithPrevious = previous?.role === message.role;
+
+            return (
+              <ChatMessage
+                key={message.id}
+                message={message}
+                groupedWithPrevious={groupedWithPrevious}
+              />
+            );
+          })}
         </div>
       </div>
     </div>

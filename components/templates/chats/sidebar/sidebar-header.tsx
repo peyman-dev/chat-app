@@ -1,24 +1,29 @@
-import { Menu } from "lucide-react";
-import { motion } from "motion/react";
+import { AnimatePresence, motion } from "motion/react";
+import SidebarToggleButton from "./sidebar-toggle-button";
 
 type SidebarHeaderProps = {
-  onMenuClick?: () => void;
+  collapsed?: boolean;
+  isMobile?: boolean;
+  onToggle: () => void;
 };
 
-const SidebarHeader = ({ onMenuClick }: SidebarHeaderProps) => {
+const SidebarHeader = ({ collapsed = false, isMobile = false, onToggle }: SidebarHeaderProps) => {
   return (
-    <header className="flex h-[64px] items-start justify-end">
-      <motion.button
-        type="button"
-        onClick={onMenuClick}
-        whileHover={{ scale: 1.05 }}
-        whileTap={{ scale: 0.94 }}
-        transition={{ duration: 0.16, ease: "easeOut" }}
-        aria-label="باز و بسته کردن منو"
-        className="grid size-11 place-items-center rounded-lg text-[#2280d2] outline-none transition-colors hover:bg-white/35 focus-visible:ring-2 focus-visible:ring-[#2c82d8]/60 dark:text-[#89beff] dark:hover:bg-white/8"
-      >
-        <Menu className="size-7" strokeWidth={2.1} />
-      </motion.button>
+    <header className="flex min-h-12 items-center justify-end">
+      <AnimatePresence mode="wait" initial={false}>
+        <motion.div
+          key={`${collapsed ? "collapsed" : "expanded"}-${isMobile ? "mobile" : "desktop"}`}
+          initial={{ opacity: 0, scale: 0.94 }}
+          animate={{ opacity: 1, scale: 1 }}
+          exit={{ opacity: 0, scale: 0.94 }}
+          transition={{ duration: 0.16, ease: "easeOut" }}
+        >
+          <SidebarToggleButton
+            mode={isMobile ? "close-mobile" : collapsed ? "expand" : "collapse"}
+            onClick={onToggle}
+          />
+        </motion.div>
+      </AnimatePresence>
     </header>
   );
 };

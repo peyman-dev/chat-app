@@ -6,7 +6,7 @@ import { nanoid } from "nanoid";
 export type ChatMessage = {
   id: string;
   text: string;
-  role: "user";
+  role: "user" | "assistant";
   createdAt: number;
 };
 

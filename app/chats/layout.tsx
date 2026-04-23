@@ -9,7 +9,7 @@ const layout = ({ children }: {
         <main id='chat' className='flex h-dvh w-dvw'>
             <Sidebar />
             <section id='chat-content' className='relative bg-[url("/images/chat-light-bg.png")] dark:bg-[url("/images/chat-dark-bg.png")] bg-cover h-dvh w-full bg-center'>
-                <div className='h-full overflow-y-auto'>
+                <div className='h-full'>
                     {children}
                 </div>
 

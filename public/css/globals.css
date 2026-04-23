@@ -455,12 +455,13 @@ button {
 } */
 
 .chats-scrollbar {
-  scrollbar-width: thin;
-  scrollbar-color: rgba(103, 141, 198, 0.35) transparent;
+  -ms-overflow-style: none;
+  scrollbar-width: none;
 }
 
 .chats-scrollbar::-webkit-scrollbar {
-  width: 8px;
+  width: 0;
+  height: 0;
 }
 
 .chats-scrollbar::-webkit-scrollbar-track {
@@ -468,8 +469,7 @@ button {
 }
 
 .chats-scrollbar::-webkit-scrollbar-thumb {
-  background: rgba(103, 141, 198, 0.28);
-  border-radius: 999px;
+  background: transparent;
 }
 
 .sidebar-panel {

@@ -7,25 +7,33 @@ type SidebarFooterItemProps = {
   label: string;
   onClick?: () => void;
   isActive?: boolean;
+  collapsed?: boolean;
 };
 
-const SidebarFooterItem = ({ icon, label, onClick, isActive = false }: SidebarFooterItemProps) => {
+const SidebarFooterItem = ({
+  icon,
+  label,
+  onClick,
+  isActive = false,
+  collapsed = false,
+}: SidebarFooterItemProps) => {
   return (
     <motion.button
       type="button"
       onClick={onClick}
-      whileHover={{ x: -2 }}
-      whileTap={{ scale: 0.985 }}
-      transition={{ duration: 0.16, ease: "easeOut" }}
+      whileHover={{ x: collapsed ? 0 : -2, scale: 1.02 }}
+      whileTap={{ scale: 0.97 }}
+      transition={{ duration: 0.16, ease: [0.22, 1, 0.36, 1] }}
+      title={collapsed ? label : undefined}
       className={cn(
-        "flex w-full items-center  gap-2 rounded-xl px-3 py-1.5 text-right text-[38px] font-semibold outline-none transition-colors",
-        "text-[#254ebd] hover:bg-[#edf2fb] focus-visible:ring-2 focus-visible:ring-[#2c82d8]/60",
-        "dark:text-[#a5caff] dark:hover:bg-white/8",
-        isActive && "bg-[#edf3fc] dark:bg-white/12",
+        "flex w-full items-center rounded-xl border border-transparent text-sm font-semibold outline-none transition-colors",
+        "text-[#253FAE] font-bold! dark:text-[#e8f1ff] hover:border-white/16 hover:bg-white/10 focus-visible:ring-2 focus-visible:ring-[#81beff]/70",
+        isActive && "border-white/24 bg-white/13",
+        collapsed ? "justify-center px-0 py-2.5" : " gap-2 px-2.5 py-2.5",
       )}
     >
-      <span className="grid size-7 place-items-center text-[#8fa2de] dark:text-[#8bb8f4]">{icon}</span>
-      <span>{label}</span>
+      <span className="grid size-5 place-items-center text-[#253FAE] dark:text-[#b7d5ff]">{icon}</span>
+      {!collapsed ? <span>{label}</span> : null}
     </motion.button>
   );
 };
