@@ -4,6 +4,8 @@ import { useMemo } from "react";
 import { useParams } from "next/navigation";
 import { useChatStore } from "@/lib/stores/chat-store";
 
+const EMPTY_MESSAGES: ReturnType<typeof useChatStore.getState>["chats"][string] = [];
+
 const ChatThread = () => {
   const params = useParams<{ chatId?: string | string[] }>();
 
@@ -17,13 +19,9 @@ const ChatThread = () => {
     return value ?? null;
   }, [params]);
 
-  const messages = useChatStore((state) => {
-    if (!activeChatId) {
-      return [];
-    }
-
-    return state.chats[activeChatId] ?? [];
-  });
+  const messages = useChatStore((state) =>
+    activeChatId ? (state.chats[activeChatId] ?? EMPTY_MESSAGES) : EMPTY_MESSAGES,
+  );
 
   return (
     <div className="mx-auto flex h-full w-full max-w-[1400px] flex-col px-6 pb-44 pt-8">
