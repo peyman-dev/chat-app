@@ -3,6 +3,10 @@ import Script from "next/script";
 import { ThemeProvider } from "@/components/providers/theme-provider";
 import { getThemeInitScript } from "@/lib/theme";
 import "@/public/css/globals.css";
+import { configDotenv } from 'dotenv'
+import { ToastContainer } from "react-toastify";
+
+configDotenv()
 
 export const metadata: Metadata = {
   title: "Chat App",
@@ -22,6 +26,7 @@ export default function RootLayout({
         </Script>
       </head>
       <body className="min-h-screen antialiased">
+        <ToastContainer className={"font-yekanbakh! **:font-yekanbakh!"}/>
         <ThemeProvider>{children}</ThemeProvider>
       </body>
     </html>

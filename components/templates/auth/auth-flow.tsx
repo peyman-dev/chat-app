@@ -1,60 +1,48 @@
 "use client";
 
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState, useTransition } from "react";
-import { AnimatePresence, motion } from "motion/react";
-import { z } from "zod";
+import { AnimatePresence } from "motion/react";
+import { toast } from "react-toastify";
+import { requestOTP, verifyOTP } from "@/app/actions";
 import AuthCard from "@/components/templates/auth/auth-card";
-import AuthHeader from "@/components/templates/auth/auth-header";
 import AuthShell from "@/components/templates/auth/auth-shell";
-import AuthSubmitButton from "@/components/templates/auth/auth-submit-button";
-import MobileInput from "@/components/templates/auth/mobile-input";
-import OtpInput from "@/components/templates/auth/otp-input";
-import SocialLoginButton from "@/components/templates/auth/social-login-button";
-import { requestOtp, verifyOtp } from "@/lib/api/accounts";
+import AuthMobileStep from "@/components/templates/auth/auth-mobile-step";
+import AuthOtpStep from "@/components/templates/auth/auth-otp-step";
+import AuthRegisterStep from "@/components/templates/auth/auth-register-step";
+import AuthFlowToast from "@/components/templates/auth/auth-flow-toast";
+import {
+  createOtpSchema,
+  mobileSchema,
+  normalizeOtp,
+  normalizePhoneNumberForApi,
+  registerProfileSchema,
+} from "@/components/templates/auth/auth-flow.validators";
 
 type AuthFlowProps = {
   mode: "login" | "register";
+  initialMobile?: string;
 };
 
-const OTP_LENGTH = 5;
+const OTP_LENGTH = 6;
 const RESEND_INITIAL_SECONDS = 56;
 
-const mobileSchema = z.object({
-  mobile: z
-    .string()
-    .trim()
-    .min(1, "شماره موبایل را وارد کنید")
-    .transform((value) => value.replace(/[۰-۹]/g, (digit) => String("۰۱۲۳۴۵۶۷۸۹".indexOf(digit))))
-    .refine((value) => /^(\+98|0)?9\d{9}$/.test(value.replace(/\s+/g, "")), {
-      message: "فرمت شماره موبایل معتبر نیست",
-    }),
-});
-
-const otpSchema = z
-  .string()
-  .trim()
-  .regex(new RegExp(`^\\d{${OTP_LENGTH}}$`), `کد تایید باید ${OTP_LENGTH} رقم باشد`);
-
-const toEnglishDigits = (value: string) => {
-  return value.replace(/[۰-۹]/g, (digit) => String("۰۱۲۳۴۵۶۷۸۹".indexOf(digit)));
-};
-
-const sanitizeMobile = (value: string) => toEnglishDigits(value).replace(/\s+/g, "");
-
-const AuthFlow = ({ mode }: AuthFlowProps) => {
+const AuthFlow = ({ mode, initialMobile = "" }: AuthFlowProps) => {
   const router = useRouter();
-  const [step, setStep] = useState<"mobile" | "otp">("mobile");
-  const [mobile, setMobile] = useState("");
+  const [step, setStep] = useState<"details" | "otp">("details");
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
+  const [mobile, setMobile] = useState(() => normalizePhoneNumberForApi(initialMobile));
   const [otp, setOtp] = useState("");
+  const [firstNameError, setFirstNameError] = useState("");
+  const [lastNameError, setLastNameError] = useState("");
   const [mobileError, setMobileError] = useState("");
   const [otpError, setOtpError] = useState("");
-  const [secondsLeft, setSecondsLeft] = useState(RESEND_INITIAL_SECONDS);
-  const [bannerMessage, setBannerMessage] = useState("");
+  const [secondsLeft, setSecondsLeft] = useState(0);
   const [isPending, startTransition] = useTransition();
 
   const isLogin = mode === "login";
+  const otpSchema = useMemo(() => createOtpSchema(OTP_LENGTH), []);
 
   useEffect(() => {
     if (step !== "otp" || secondsLeft <= 0) {
@@ -68,30 +56,16 @@ const AuthFlow = ({ mode }: AuthFlowProps) => {
     return () => {
       window.clearInterval(timerId);
     };
-  }, [secondsLeft, step]);
-
-  useEffect(() => {
-    if (!bannerMessage) {
-      return;
-    }
-
-    const timeoutId = window.setTimeout(() => {
-      setBannerMessage("");
-    }, 2600);
-
-    return () => {
-      window.clearTimeout(timeoutId);
-    };
-  }, [bannerMessage]);
+  }, [mode, secondsLeft, step]);
 
   const formattedTimer = useMemo(() => {
     return `0:${String(secondsLeft).padStart(2, "0")}`;
   }, [secondsLeft]);
 
-  const handleRequestOtp = () => {
+  const handleLoginRequestOtp = () => {
     setMobileError("");
 
-    const result = mobileSchema.safeParse({ mobile: sanitizeMobile(mobile) });
+    const result = mobileSchema.safeParse({ mobile });
 
     if (!result.success) {
       setMobileError(result.error.issues[0]?.message ?? "شماره موبایل معتبر نیست");
@@ -100,23 +74,36 @@ const AuthFlow = ({ mode }: AuthFlowProps) => {
 
     startTransition(async () => {
       try {
-        await requestOtp({ mobile: result.data.mobile, mode });
-        setMobile(result.data.mobile);
+        const normalizedMobile = result.data.mobile;
+        const response = await requestOTP({ phone_number: normalizedMobile });
+        const apiMobile = normalizePhoneNumberForApi(response.data.phone_number || normalizedMobile);
+
+        if (isLogin && response.data.is_new) {
+          router.push(`/auth/register?phone_number=${encodeURIComponent(apiMobile)}`);
+          return;
+        }
+
+        if (!response.success) {
+          toast.error(response.message || "ارسال کد با خطا مواجه شد");
+          return;
+        }
+
+        toast.success(response.message || "کد تایید ارسال شد");
+        setMobile(apiMobile);
         setOtp("");
         setOtpError("");
         setStep("otp");
         setSecondsLeft(RESEND_INITIAL_SECONDS);
       } catch (error) {
-        setBannerMessage(error instanceof Error ? error.message : "ارسال کد با خطا مواجه شد");
+        toast.error(error instanceof Error ? error.message : "ارسال کد با خطا مواجه شد");
       }
     });
   };
 
-  const handleVerifyOtp = () => {
+  const handleLoginVerifyOtp = () => {
     setOtpError("");
 
-    const normalizedOtp = toEnglishDigits(otp).replace(/\D+/g, "");
-    const validation = otpSchema.safeParse(normalizedOtp);
+    const validation = otpSchema.safeParse(normalizeOtp(otp));
 
     if (!validation.success) {
       setOtpError(validation.error.issues[0]?.message ?? "کد تایید معتبر نیست");
@@ -125,15 +112,101 @@ const AuthFlow = ({ mode }: AuthFlowProps) => {
 
     startTransition(async () => {
       try {
-        await verifyOtp({
-          mobile: sanitizeMobile(mobile),
+        const response = await verifyOTP({
+          phone_number: normalizePhoneNumberForApi(mobile),
           otp: validation.data,
-          mode,
         });
 
+        if (!response.success) {
+          toast.error(response.message || "تایید کد با خطا مواجه شد");
+          return;
+        }
+
+        toast.success(response.message || "ورود موفقیت آمیز بود");
         router.push("/chats");
       } catch (error) {
-        setBannerMessage(error instanceof Error ? error.message : "تایید کد با خطا مواجه شد");
+        toast.error(error instanceof Error ? error.message : "تایید کد با خطا مواجه شد");
+      }
+    });
+  };
+
+  const handleRegisterRequestOtp = () => {
+    setFirstNameError("");
+    setLastNameError("");
+    setMobileError("");
+
+    const profileValidation = registerProfileSchema.safeParse({
+      first_name: firstName,
+      last_name: lastName,
+    });
+
+    if (!profileValidation.success) {
+      const nameErrors = profileValidation.error.flatten().fieldErrors;
+      setFirstNameError(nameErrors.first_name?.[0] ?? "");
+      setLastNameError(nameErrors.last_name?.[0] ?? "");
+      return;
+    }
+
+    const mobileValidation = mobileSchema.safeParse({ mobile });
+
+    if (!mobileValidation.success) {
+      setMobileError(mobileValidation.error.issues[0]?.message ?? "شماره موبایل معتبر نیست");
+      return;
+    }
+
+    startTransition(async () => {
+      try {
+        const response = await requestOTP({
+          phone_number: mobileValidation.data.mobile,
+        });
+
+        if (!response.success) {
+          toast.error(response.message || "ارسال کد با خطا مواجه شد");
+          return;
+        }
+
+        toast.success(response.message || "کد تایید ارسال شد");
+        setFirstName(profileValidation.data.first_name);
+        setLastName(profileValidation.data.last_name);
+        setMobile(normalizePhoneNumberForApi(response.data.phone_number || mobileValidation.data.mobile));
+        setOtp("");
+        setOtpError("");
+        setStep("otp");
+        setSecondsLeft(RESEND_INITIAL_SECONDS);
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : "ارسال کد با خطا مواجه شد");
+      }
+    });
+  };
+
+  const handleRegisterVerifyOtp = () => {
+    setOtpError("");
+
+    const otpValidation = otpSchema.safeParse(normalizeOtp(otp));
+
+    if (!otpValidation.success) {
+      setOtpError(otpValidation.error.issues[0]?.message ?? "کد تایید معتبر نیست");
+      return;
+    }
+
+    startTransition(async () => {
+      try {
+        const response = await verifyOTP({
+          phone_number: normalizePhoneNumberForApi(mobile),
+          otp: otpValidation.data,
+          first_name: firstName.trim(),
+          last_name: lastName.trim(),
+        });
+
+        if (!response.success) {
+          toast.error(response.message || "ثبت نام با خطا مواجه شد");
+          return;
+        }
+
+        toast.success(response.message || "ثبت نام موفقیت آمیز بود");
+        router.push("/chats");
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : "ثبت نام با خطا مواجه شد");
       }
     });
   };
@@ -143,129 +216,90 @@ const AuthFlow = ({ mode }: AuthFlowProps) => {
       return;
     }
 
+    const validation = mobileSchema.safeParse({ mobile });
+
+    if (!validation.success) {
+      setMobileError(validation.error.issues[0]?.message ?? "شماره موبایل معتبر نیست");
+      return;
+    }
+
     startTransition(async () => {
       try {
-        await requestOtp({ mobile: sanitizeMobile(mobile), mode });
-        setOtp("");
-        setOtpError("");
+        const response = await requestOTP({ phone_number: validation.data.mobile });
+
+        if (!response.success) {
+          toast.error(response.message || "ارسال مجدد کد ناموفق بود");
+          return;
+        }
+
+        toast.success(response.message || "کد تایید مجددا ارسال شد");
         setSecondsLeft(RESEND_INITIAL_SECONDS);
       } catch (error) {
-        setBannerMessage(error instanceof Error ? error.message : "ارسال مجدد کد ناموفق بود");
+        toast.error(error instanceof Error ? error.message : "ارسال مجدد کد ناموفق بود");
       }
     });
   };
 
   return (
     <AuthShell>
-      <AnimatePresence>
-        {bannerMessage ? (
-          <motion.p
-            key={bannerMessage}
-            initial={{ opacity: 0, y: -8 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -8 }}
-            className="auth-toast"
-            role="status"
-            aria-live="polite"
-          >
-            {bannerMessage}
-          </motion.p>
-        ) : null}
-      </AnimatePresence>
+      <AuthFlowToast />
 
       <AuthCard>
         <AnimatePresence mode="wait" initial={false}>
-          {step === "mobile" ? (
-            <motion.div
-              key="mobile-step"
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -10 }}
-              transition={{ duration: 0.28, ease: "easeOut" }}
-            >
-              <AuthHeader
-                mode="mobile"
-                title={isLogin ? "ورود" : "ثبت نام"}
-                subtitle="به چت بات هوشمند صندوق نوآوری و شکوفایی خوش آمدید"
+          {isLogin ? (
+            step === "details" ? (
+              <AuthMobileStep
+                mode="login"
+                mobile={mobile}
+                mobileError={mobileError}
+                isPending={isPending}
+                onMobileChange={setMobile}
+                onRequestOtp={handleLoginRequestOtp}
               />
-
-              <div className="mt-10 space-y-7 sm:mt-12 sm:space-y-8">
-                <form
-                  onSubmit={(event) => {
-                    event.preventDefault();
-                    handleRequestOtp();
-                  }}
-                  className="space-y-4"
-                >
-                  <MobileInput
-                    value={mobile}
-                    onChange={setMobile}
-                    onSubmit={handleRequestOtp}
-                    disabled={isPending}
-                    error={mobileError}
-                  />
-                </form>
-{/* 
-                <div className="relative py-1">
-                  <div className="h-px w-full bg-[#9ba3c2]/35 dark:bg-white/20" />
-                  <span className="absolute right-1/2 top-1/2 -translate-y-1/2 translate-x-1/2 bg-transparent px-2 text-sm font-semibold text-[#64659a] dark:text-white/65">
-                    یا
-                  </span>
-                </div> */}
-
-                {/* <SocialLoginButton /> */}
-
-                <p className="auth-signup-text pt-1 text-center">
-                  {isLogin ? "حساب کاربری ندارید؟" : "قبلا ثبت نام کرده اید؟"}{" "}
-                  <Link
-                    href={isLogin ? "/auth/register" : "/auth/login"}
-                    className="auth-signup-link outline-none focus-visible:rounded-sm focus-visible:ring-2 focus-visible:ring-[#12d7ce]/55"
-                  >
-                    {isLogin ? "ثبت نام" : "ورود"}
-                  </Link>
-                </p>
-              </div>
-            </motion.div>
+            ) : (
+              <AuthOtpStep
+                isLogin
+                mobile={mobile}
+                otp={otp}
+                otpError={otpError}
+                otpLength={OTP_LENGTH}
+                isPending={isPending}
+                secondsLeft={secondsLeft}
+                formattedTimer={formattedTimer}
+                onOtpChange={setOtp}
+                onResend={handleResend}
+                onVerifyOtp={handleLoginVerifyOtp}
+              />
+            )
+          ) : step === "details" ? (
+            <AuthRegisterStep
+              firstName={firstName}
+              lastName={lastName}
+              mobile={mobile}
+              firstNameError={firstNameError}
+              lastNameError={lastNameError}
+              mobileError={mobileError}
+              isPending={isPending}
+              onFirstNameChange={setFirstName}
+              onLastNameChange={setLastName}
+              onMobileChange={setMobile}
+              onRequestOtp={handleRegisterRequestOtp}
+            />
           ) : (
-            <motion.div
-              key="otp-step"
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -10 }}
-              transition={{ duration: 0.28, ease: "easeOut" }}
-            >
-              <AuthHeader mode="otp" title={isLogin ? "ورود" : "ثبت نام"} mobile={mobile} />
-
-              <div className="mt-16 space-y-7 text-center sm:mt-[4.9rem]">
-                <p className="text-lg font-extrabold text-[#241a81] dark:text-white">
-                  کد {OTP_LENGTH} رقمی ارسال شده به موبایل خود را وارد کنید
-                </p>
-
-                <OtpInput value={otp} onChange={setOtp} disabled={isPending} length={OTP_LENGTH} error={otpError} />
-
-                <p className="text-sm font-bold text-[#6c6fa0] dark:text-white/60">
-                  {secondsLeft > 0 ? (
-                    <>
-                      ارسال دوباره کد <span dir="ltr">{formattedTimer}</span>
-                    </>
-                  ) : (
-                    <button
-                      type="button"
-                      className="text-[#16c7bf] outline-none transition hover:opacity-90 focus-visible:rounded-sm focus-visible:ring-2 focus-visible:ring-[#16c7bf]/50"
-                      onClick={handleResend}
-                    >
-                      ارسال مجدد کد
-                    </button>
-                  )}
-                </p>
-              </div>
-
-              <div className="mt-18 sm:mt-20">
-                <AuthSubmitButton onClick={handleVerifyOtp} loading={isPending}>
-                  تایید
-                </AuthSubmitButton>
-              </div>
-            </motion.div>
+            <AuthOtpStep
+              isLogin={false}
+              mobile={mobile}
+              otp={otp}
+              otpError={otpError}
+              otpLength={OTP_LENGTH}
+              isPending={isPending}
+              secondsLeft={secondsLeft}
+              formattedTimer={formattedTimer}
+              onOtpChange={setOtp}
+              onResend={handleResend}
+              onVerifyOtp={handleRegisterVerifyOtp}
+              submitLabel="ثبت نام"
+            />
           )}
         </AnimatePresence>
       </AuthCard>
