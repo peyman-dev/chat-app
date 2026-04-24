@@ -12,6 +12,8 @@ import MobileSidebarToggle from "./mobile-sidebar-toggle";
 import SidebarExpandedPanel from "./sidebar-expanded-panel";
 import SidebarRail from "./sidebar-rail";
 
+const SIDEBAR_EASE: [number, number, number, number] = [0.22, 1, 0.36, 1];
+
 const Sidebar = () => {
   const router = useRouter();
   const params = useParams<{ chatId?: string | string[] }>();
@@ -60,17 +62,19 @@ const Sidebar = () => {
       <motion.aside
         initial={{ opacity: 0, x: 16 }}
         animate={{ opacity: 1, x: 0, width: isDesktopCollapsed ? 92 : 360 }}
-        transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
+        transition={{ duration: 0.34, ease: SIDEBAR_EASE }}
+        layout
         className="hidden h-dvh shrink-0 overflow-hidden bg-[#d7dce8] dark:bg-[#0b1140] lg:block"
       >
-        <AnimatePresence mode="wait" initial={false}>
+        <AnimatePresence mode="sync" initial={false}>
           {isDesktopCollapsed ? (
             <motion.div
               key="sidebar-rail"
-              initial={{ x: 8 }}
-              animate={{ x: 0 }}
-              exit={{ x: 8 }}
-              transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
+              initial={{ x: 10, opacity: 0, scale: 0.985, filter: "blur(5px)" }}
+              animate={{ x: 0, opacity: 1, scale: 1, filter: "blur(0px)" }}
+              exit={{ x: 8, opacity: 0, scale: 0.99, filter: "blur(4px)" }}
+              transition={{ duration: 0.26, ease: SIDEBAR_EASE }}
+              layout
               className="h-full"
             >
               <SidebarRail
@@ -86,10 +90,11 @@ const Sidebar = () => {
           ) : (
             <motion.div
               key="sidebar-expanded"
-              initial={{ x: -10 }}
-              animate={{ x: 0 }}
-              exit={{ x: -10 }}
-              transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+              initial={{ x: -12, opacity: 0, scale: 0.985, filter: "blur(5px)" }}
+              animate={{ x: 0, opacity: 1, scale: 1, filter: "blur(0px)" }}
+              exit={{ x: -8, opacity: 0, scale: 0.99, filter: "blur(4px)" }}
+              transition={{ duration: 0.28, ease: SIDEBAR_EASE }}
+              layout
               className="h-full"
             >
               <SidebarExpandedPanel

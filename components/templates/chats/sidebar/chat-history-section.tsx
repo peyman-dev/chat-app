@@ -27,7 +27,7 @@ const ChatHistorySection = ({ items, activeChatId, onSelect }: ChatHistorySectio
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 6 }}
             transition={{ duration: 0.22, ease: "easeOut" }}
-            className="mt-7 text-right text-sm font-medium text-[#d3ddff]"
+            className="mt-7 text-right text-sm font-medium text-[#6282ee]! dark:text-[#d3ddff]"
           >
             هنوز چتی ندارید
           </motion.p>

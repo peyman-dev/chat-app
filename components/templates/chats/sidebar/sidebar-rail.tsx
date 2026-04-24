@@ -43,12 +43,12 @@ const SidebarRail = ({
               title={item.title}
               aria-current={item.chatId === activeChatId ? "page" : undefined}
               className={[
-                "grid size-10 place-items-center rounded-xl border border-transparent text-[#b7d5ff]  outline-none",
+                "grid size-10 place-items-center rounded-xl border border-transparent text-[#1871ACA6] dark:text-[#b7d5ff]  outline-none",
                 "bg-white/7 hover:border-white/18 hover:bg-white/12 focus-visible:ring-2 focus-visible:ring-[#81beff]/70",
-                item.chatId === activeChatId ? "border-white/24 bg-white/15 text-white" : "",
+                item.chatId === activeChatId ? "border-white/24 bg-white/15 text-[#1871AC] dark:text-white" : "",
               ].join(" ")}
             >
-              <MessageSquare className="size-[18px]" strokeWidth={2.1} />
+              <MessageSquare className="size-[18px]" strokeWidth={item.chatId === activeChatId ? 2.6 : 2.1} />
             </motion.button>
           ))}
         </div>
