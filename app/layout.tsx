@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Script from "next/script";
 import { ThemeProvider } from "@/components/providers/theme-provider";
+import SessionBootstrapper from "@/components/providers/session-bootstrapper";
 import { getThemeInitScript } from "@/lib/theme";
 import "@/public/css/globals.css";
 import { configDotenv } from 'dotenv'
@@ -27,7 +28,10 @@ export default function RootLayout({
       </head>
       <body className="min-h-screen antialiased">
         <ToastContainer className={"font-yekanbakh! **:font-yekanbakh!"}/>
-        <ThemeProvider>{children}</ThemeProvider>
+        <ThemeProvider>
+          <SessionBootstrapper />
+          {children}
+        </ThemeProvider>
       </body>
     </html>
   );

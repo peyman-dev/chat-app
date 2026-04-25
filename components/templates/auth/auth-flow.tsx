@@ -18,6 +18,7 @@ import {
   normalizePhoneNumberForApi,
   registerProfileSchema,
 } from "@/components/templates/auth/auth-flow.validators";
+import { useSession } from "@/lib/stores/session-store";
 
 type AuthFlowProps = {
   mode: "login" | "register";
@@ -40,6 +41,7 @@ const AuthFlow = ({ mode, initialMobile = "" }: AuthFlowProps) => {
   const [otpError, setOtpError] = useState("");
   const [secondsLeft, setSecondsLeft] = useState(0);
   const [isPending, startTransition] = useTransition();
+  const validateSession = useSession((state) => state.validateSession);
 
   const isLogin = mode === "login";
   const otpSchema = useMemo(() => createOtpSchema(OTP_LENGTH), []);
@@ -76,6 +78,7 @@ const AuthFlow = ({ mode, initialMobile = "" }: AuthFlowProps) => {
       try {
         const normalizedMobile = result.data.mobile;
         const response = await requestOTP({ phone_number: normalizedMobile });
+        console.log(response)
         const apiMobile = normalizePhoneNumberForApi(response.data.phone_number || normalizedMobile);
 
         if (isLogin && response.data.is_new) {
@@ -122,6 +125,7 @@ const AuthFlow = ({ mode, initialMobile = "" }: AuthFlowProps) => {
           return;
         }
 
+        await validateSession();
         toast.success(response.message || "ورود موفقیت آمیز بود");
         router.push("/chats");
       } catch (error) {
@@ -159,6 +163,8 @@ const AuthFlow = ({ mode, initialMobile = "" }: AuthFlowProps) => {
         const response = await requestOTP({
           phone_number: mobileValidation.data.mobile,
         });
+
+        console.log(response)
 
         if (!response.success) {
           toast.error(response.message || "ارسال کد با خطا مواجه شد");
@@ -198,11 +204,14 @@ const AuthFlow = ({ mode, initialMobile = "" }: AuthFlowProps) => {
           last_name: lastName.trim(),
         });
 
+        console.log(response)
+
         if (!response.success) {
           toast.error(response.message || "ثبت نام با خطا مواجه شد");
           return;
         }
 
+        await validateSession();
         toast.success(response.message || "ثبت نام موفقیت آمیز بود");
         router.push("/chats");
       } catch (error) {

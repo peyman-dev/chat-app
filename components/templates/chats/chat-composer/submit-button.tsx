@@ -1,14 +1,25 @@
+"use client"
 import { ArrowUp } from "lucide-react";
-import { ButtonHTMLAttributes } from "react";
+import { ButtonHTMLAttributes, useTransition } from "react";
 import { cn } from "@/lib/utils";
+import { chatWithAi } from "@/app/actions";
 
 type SubmitButtonProps = ButtonHTMLAttributes<HTMLButtonElement>;
 
-const SubmitButton = ({ className, disabled, ...props }: SubmitButtonProps) => {
+const SubmitButton = ({ className, disabled, text, ...props }: SubmitButtonProps & { text: string }) => {
+  const [sendingMessage, startTransition] = useTransition()
+
+  const onClick = () => {
+    startTransition(async () => {
+      const response = await chatWithAi(text)
+      console.log(response)
+    })
+  }
   return (
     <button
       type="submit"
       disabled={disabled}
+      onClick={onClick}
       className={cn(
         "grid size-11 shrink-0 place-items-center rounded-full bg-[#83898f] text-[#dce4eb] transition-all sm:size-[56px]",
         "border border-transparent",

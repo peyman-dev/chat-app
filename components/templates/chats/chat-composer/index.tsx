@@ -67,7 +67,7 @@ const ChatComposer = ({ className }: ChatComposerProps) => {
         className,
       )}
     >
-      <SubmitButton disabled={!text.trim()} />
+      <SubmitButton text={text} disabled={!text.trim()} />
 
       <div
         className={cn(

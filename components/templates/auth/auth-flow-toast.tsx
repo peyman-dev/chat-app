@@ -16,10 +16,8 @@ const AuthFlowToast = () => {
       draggable
       theme="colored"
       toastClassName="font-yekanbakh"
-      bodyClassName="font-yekanbakh"
     />
   );
 };
 
 export default AuthFlowToast;
-

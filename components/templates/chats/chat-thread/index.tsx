@@ -4,10 +4,13 @@ import { useEffect, useMemo, useRef } from "react";
 import { useParams } from "next/navigation";
 import ChatMessage from "@/components/templates/chats/chat-thread/chat-message";
 import { useChatStore } from "@/lib/stores/chat-store";
+import { useSession } from "@/lib/stores/session-store";
 
 const EMPTY_MESSAGES: ReturnType<typeof useChatStore.getState>["chats"][string] = [];
 
 const ChatThread = () => {
+  const { session } = useSession()
+  // console.log(session)
   const params = useParams<{ chatId?: string | string[] }>();
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const hasInitialScroll = useRef(false);
