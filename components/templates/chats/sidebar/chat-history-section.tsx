@@ -2,7 +2,7 @@ import { AnimatePresence, motion } from "motion/react";
 import ChatHistoryItem from "./chat-history-item";
 
 export type SidebarChatItem = {
-  chatId: string;
+  id: string;
   title: string;
 };
 
@@ -15,7 +15,7 @@ type ChatHistorySectionProps = {
 const ChatHistorySection = ({ items, activeChatId, onSelect }: ChatHistorySectionProps) => {
   return (
     <section className="mt-6 flex min-h-0 flex-1 flex-col">
-      <h2 className="text-right text-[2rem] leading-[1.05] font-black text-[#1871AC] dark:text-[#f4f7ff]  drop-shadow-[0_2px_10px_rgba(18,34,84,0.25)]">
+      <h2 className="text-right text-xl mb-5 leading-[1.05] font-black text-[#1871AC] dark:text-[#f4f7ff]  drop-shadow-[0_2px_10px_rgba(18,34,84,0.25)]">
         تاریخچه چت ها
       </h2>
 
@@ -42,10 +42,10 @@ const ChatHistorySection = ({ items, activeChatId, onSelect }: ChatHistorySectio
           >
             {items.map((item) => (
               <ChatHistoryItem
-                key={item.chatId}
+                key={item.id}
                 label={item.title}
-                isActive={item.chatId === activeChatId}
-                onClick={() => onSelect(item.chatId)}
+                isActive={item.id === activeChatId}
+                onClick={() => onSelect(item.id)}
               />
             ))}
           </motion.div>

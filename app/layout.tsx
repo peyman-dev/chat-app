@@ -6,6 +6,7 @@ import { getThemeInitScript } from "@/lib/theme";
 import "@/public/css/globals.css";
 import { configDotenv } from 'dotenv'
 import { ToastContainer } from "react-toastify";
+import QueryProvider from "@/components/providers/query-provider";
 
 configDotenv()
 
@@ -27,11 +28,13 @@ export default function RootLayout({
         </Script>
       </head>
       <body className="min-h-screen antialiased">
-        <ToastContainer className={"font-yekanbakh! **:font-yekanbakh!"}/>
-        <ThemeProvider>
-          <SessionBootstrapper />
-          {children}
-        </ThemeProvider>
+        <QueryProvider>
+          <ToastContainer className={"font-yekanbakh! **:font-yekanbakh!"} />
+          <ThemeProvider>
+            <SessionBootstrapper />
+            {children}
+          </ThemeProvider>
+        </QueryProvider>
       </body>
     </html>
   );

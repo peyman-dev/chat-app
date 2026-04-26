@@ -30,6 +30,7 @@ const ChatComposer = ({ className }: ChatComposerProps) => {
     return value ?? null;
   }, [params]);
 
+
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
@@ -42,6 +43,7 @@ const ChatComposer = ({ className }: ChatComposerProps) => {
     if (pathname === "/chats") {
       const nextChatId = nanoid(14);
       sendMessage(nextChatId, message);
+      
       setText("");
       router.push(`/chats/${nextChatId}`);
       return;

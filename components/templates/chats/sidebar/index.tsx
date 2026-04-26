@@ -6,20 +6,25 @@ import { AnimatePresence, motion } from "motion/react";
 import { useParams, useRouter } from "next/navigation";
 import { useTheme } from "@/components/providers/theme-provider";
 import { useChatStore } from "@/lib/stores/chat-store";
-import { SidebarChatItem } from "./chat-history-section";
 import MobileSidebarDrawer from "./mobile-sidebar-drawer";
 import MobileSidebarToggle from "./mobile-sidebar-toggle";
 import SidebarExpandedPanel from "./sidebar-expanded-panel";
 import SidebarRail from "./sidebar-rail";
+import { getHistory } from "@/app/actions";
+import { useQuery } from '@tanstack/react-query'
 
 const SIDEBAR_EASE: [number, number, number, number] = [0.22, 1, 0.36, 1];
 
 const Sidebar = () => {
   const router = useRouter();
   const params = useParams<{ chatId?: string | string[] }>();
-  const summaries = useChatStore((state) => state.summaries);
   const createChat = useChatStore((state) => state.createChat);
   const { isDarkMode, toggleTheme } = useTheme();
+  const { data, isLoading } = useQuery({
+    queryFn: getHistory,
+    queryKey: ["recent-chats"]
+  })
+
 
   const [isDesktopCollapsed, setIsDesktopCollapsed] = useState(false);
   const [isMobileDrawerOpen, setIsMobileDrawerOpen] = useState(false);
@@ -34,14 +39,6 @@ const Sidebar = () => {
     return chatId ?? null;
   }, [params]);
 
-  const chatItems = useMemo<SidebarChatItem[]>(() => {
-    return Object.values(summaries)
-      .sort((first, second) => second.updatedAt - first.updatedAt)
-      .map((summary) => ({
-        chatId: summary.id,
-        title: summary.title,
-      }));
-  }, [summaries]);
 
   const handleCreateChat = () => {
     const chatId = nanoid(14);
@@ -54,6 +51,8 @@ const Sidebar = () => {
     router.push(`/chats/${chatId}`);
     setIsMobileDrawerOpen(false);
   };
+
+  if (isLoading) return "کصکش منتظر باش"
 
   return (
     <>
@@ -78,7 +77,7 @@ const Sidebar = () => {
               className="h-full"
             >
               <SidebarRail
-                items={chatItems}
+                items={Array.from(data?.data)}
                 activeChatId={activeChatId}
                 onSelect={handleSelectChat}
                 onCreateChat={handleCreateChat}
@@ -98,7 +97,7 @@ const Sidebar = () => {
               className="h-full"
             >
               <SidebarExpandedPanel
-                items={chatItems}
+                items={Array.from(data?.data)}
                 activeChatId={activeChatId}
                 onSelect={handleSelectChat}
                 onCreateChat={handleCreateChat}
@@ -113,7 +112,7 @@ const Sidebar = () => {
 
       <MobileSidebarDrawer isOpen={isMobileDrawerOpen} onClose={() => setIsMobileDrawerOpen(false)}>
         <SidebarExpandedPanel
-          items={chatItems}
+          items={Array.from(data?.data)}
           activeChatId={activeChatId}
           onSelect={handleSelectChat}
           onCreateChat={handleCreateChat}

@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { AnimatePresence } from "motion/react";
 import { toast } from "react-toastify";
-import { requestOTP, verifyOTP } from "@/app/actions";
+import { requestOTP, verifyOTP, checkUserRegisteration } from "@/app/actions";
 import AuthCard from "@/components/templates/auth/auth-card";
 import AuthShell from "@/components/templates/auth/auth-shell";
 import AuthMobileStep from "@/components/templates/auth/auth-mobile-step";
@@ -77,14 +77,18 @@ const AuthFlow = ({ mode, initialMobile = "" }: AuthFlowProps) => {
     startTransition(async () => {
       try {
         const normalizedMobile = result.data.mobile;
-        const response = await requestOTP({ phone_number: normalizedMobile });
-        console.log(response)
-        const apiMobile = normalizePhoneNumberForApi(response.data.phone_number || normalizedMobile);
 
-        if (isLogin && response.data.is_new) {
-          router.push(`/auth/register?phone_number=${encodeURIComponent(apiMobile)}`);
+        const registerationResponse = await checkUserRegisteration(normalizedMobile,);
+
+        if (!registerationResponse.success || !registerationResponse.data.exists) {
+          router.push(`/auth/register?phone_number=${encodeURIComponent(normalizedMobile)}`);
           return;
         }
+
+        const response = await requestOTP({ phone_number: normalizedMobile });
+        console.log(response);
+
+        const apiMobile = normalizePhoneNumberForApi(response.data.phone_number || normalizedMobile);
 
         if (!response.success) {
           toast.error(response.message || "ارسال کد با خطا مواجه شد");
@@ -164,7 +168,7 @@ const AuthFlow = ({ mode, initialMobile = "" }: AuthFlowProps) => {
           phone_number: mobileValidation.data.mobile,
         });
 
-        console.log(response)
+        console.log(response);
 
         if (!response.success) {
           toast.error(response.message || "ارسال کد با خطا مواجه شد");
@@ -204,7 +208,7 @@ const AuthFlow = ({ mode, initialMobile = "" }: AuthFlowProps) => {
           last_name: lastName.trim(),
         });
 
-        console.log(response)
+        console.log(response);
 
         if (!response.success) {
           toast.error(response.message || "ثبت نام با خطا مواجه شد");

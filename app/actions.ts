@@ -307,7 +307,11 @@ export const getHistory = async () => {
         const session = await getSession()
         const accessToken = await session?.access;
 
-        const response = await request.get("/chats/")
+        const response = await request.get("/chats/", {
+            headers: {
+                Authorization: `Bearer ${accessToken}`
+            }
+        })
         const data = await response.data
         return data
     } catch (error) {
@@ -320,25 +324,19 @@ export const getHistory = async () => {
 }
 
 
-export const chatWithAi = async (message: string) => {
+
+// /check/
+
+export const checkUserRegisteration = async (phone_number: string) => {
     try {
-        const session = await getSession();
-        console.log(session)
-        const accessToken = await session?.access;
-
-        const response = await request.post("/chat/", {
-            message: message,
-        }, {
-            headers: {
-                Authorization: `Bearer ${accessToken}`,
-                "Content-Type": "application/json"
-            }
-        })
-
+        const response = await request.get(`/check/?phone=${phone_number}`)
         const data = await response.data
         return data
     } catch (error) {
-        console.log(error)
-        return error
+        return {
+            success: false,
+            message: error instanceof Error ? error.message : DEFAULT_ERROR_MESSAGE,
+        }
+
     }
 }

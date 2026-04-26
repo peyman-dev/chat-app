@@ -2,17 +2,23 @@
 import { ArrowUp } from "lucide-react";
 import { ButtonHTMLAttributes, useTransition } from "react";
 import { cn } from "@/lib/utils";
-import { chatWithAi } from "@/app/actions";
+import { useChatWebSocket } from "@/lib/hooks/socket";
+import { useQueryClient } from "@tanstack/react-query";
 
 type SubmitButtonProps = ButtonHTMLAttributes<HTMLButtonElement>;
 
+
 const SubmitButton = ({ className, disabled, text, ...props }: SubmitButtonProps & { text: string }) => {
   const [sendingMessage, startTransition] = useTransition()
+  const { sendMessage } = useChatWebSocket()
+  const qClient = useQueryClient()
 
   const onClick = () => {
     startTransition(async () => {
-      const response = await chatWithAi(text)
-      console.log(response)
+      sendMessage(text)
+      await qClient.invalidateQueries({
+        queryKey: ['recent-chats']
+      })
     })
   }
   return (
