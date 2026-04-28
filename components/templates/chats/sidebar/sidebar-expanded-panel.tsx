@@ -25,7 +25,6 @@ const SidebarExpandedPanel = ({
   onToggleTheme,
   isMobile = false,
 }: SidebarExpandedPanelProps) => {
-  console.log(items)
   return (
     <SidebarContainer>
       <SidebarHeader onToggle={onToggle} isMobile={isMobile} />

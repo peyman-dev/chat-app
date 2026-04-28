@@ -20,7 +20,7 @@ const ChatHistorySection = ({ items, activeChatId, onSelect }: ChatHistorySectio
       </h2>
 
       <AnimatePresence mode="wait" initial={false}>
-        {items.length === 0 ? (
+        {items?.length === 0 ? (
           <motion.p
             key="history-empty"
             initial={{ opacity: 0, y: 8 }}
@@ -40,7 +40,7 @@ const ChatHistorySection = ({ items, activeChatId, onSelect }: ChatHistorySectio
             transition={{ duration: 0.2, ease: "easeOut" }}
             className="mt-4 flex-1 space-y-1.5 overflow-y-auto pl-1"
           >
-            {items.map((item) => (
+            {items?.map((item) => (
               <ChatHistoryItem
                 key={item.id}
                 label={item.title}

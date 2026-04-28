@@ -20,10 +20,12 @@ const Sidebar = () => {
   const params = useParams<{ chatId?: string | string[] }>();
   const createChat = useChatStore((state) => state.createChat);
   const { isDarkMode, toggleTheme } = useTheme();
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError } = useQuery({
     queryFn: getHistory,
     queryKey: ["recent-chats"]
   })
+
+  console.log(data)
 
 
   const [isDesktopCollapsed, setIsDesktopCollapsed] = useState(false);
@@ -52,7 +54,10 @@ const Sidebar = () => {
     setIsMobileDrawerOpen(false);
   };
 
-  if (isLoading) return "کصکش منتظر باش"
+  if (isLoading) return "Please wait ... "
+  if (isError) return "An error occurred"
+
+  console.log(isError)
 
   return (
     <>
@@ -97,7 +102,7 @@ const Sidebar = () => {
               className="h-full"
             >
               <SidebarExpandedPanel
-                items={Array.from(data?.data)}
+                items={(data?.data)}
                 activeChatId={activeChatId}
                 onSelect={handleSelectChat}
                 onCreateChat={handleCreateChat}
@@ -112,7 +117,7 @@ const Sidebar = () => {
 
       <MobileSidebarDrawer isOpen={isMobileDrawerOpen} onClose={() => setIsMobileDrawerOpen(false)}>
         <SidebarExpandedPanel
-          items={Array.from(data?.data)}
+          items={(data?.data)}
           activeChatId={activeChatId}
           onSelect={handleSelectChat}
           onCreateChat={handleCreateChat}

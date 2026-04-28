@@ -2,9 +2,7 @@
 import { getSession } from "@/lib/auth/get-session";
 import { createSessionFromVerifyPayload } from "@/lib/auth/session";
 import { request } from "@/lib/axios";
-import { configDotenv } from "dotenv";
-
-configDotenv()
+import axios from "axios";
 
 type RequestOTPResponse = {
     success: boolean;
@@ -39,21 +37,6 @@ type VerifyOTPResponse = {
 };
 
 const DEFAULT_ERROR_MESSAGE = "خطا در ارتباط با سرور";
-
-const getBaseUrl = () => {
-    const baseUrl = process.env.BASE_URL?.trim();
-
-    if (!baseUrl) {
-        throw new Error("BASE_URL is not set");
-    }
-
-    return baseUrl.endsWith("/") ? baseUrl.slice(0, -1) : baseUrl;
-};
-
-const buildUrl = (path: string) => {
-    const normalizedPath = path.startsWith("/") ? path : `/${path}`;
-    return `${getBaseUrl()}${normalizedPath}`;
-};
 
 const isRecord = (value: unknown): value is Record<string, unknown> => {
     return typeof value === "object" && value !== null;
@@ -107,25 +90,16 @@ const extractMessage = (payload: unknown, fallback: string) => {
     return fallback;
 };
 
-const postJson = async <T>(path: string, body: Record<string, unknown>) => {
-    const response = await fetch(buildUrl(path), {
-        method: "POST",
-        headers: {
-            "Content-Type": "application/json",
-        },
-        body: JSON.stringify(body),
-        cache: "no-store",
-    });
-
-    let payload: T | null = null;
-
-    try {
-        payload = (await response.json()) as T;
-    } catch {
-        payload = null;
+const extractAxiosErrorMessage = (error: unknown, fallback = DEFAULT_ERROR_MESSAGE) => {
+    if (axios.isAxiosError(error)) {
+        return extractMessage(error.response?.data, error.message || fallback);
     }
 
-    return { response, payload };
+    if (error instanceof Error && error.message.trim()) {
+        return error.message;
+    }
+
+    return fallback;
 };
 
 const normalizeVerifyPayload = (payload: unknown): VerifyOTPResponse | null => {
@@ -182,9 +156,10 @@ const normalizeVerifyPayload = (payload: unknown): VerifyOTPResponse | null => {
 
 export const requestOTP = async ({ phone_number }: { phone_number: string }): Promise<RequestOTPResponse> => {
     try {
-        const { response, payload } = await postJson<Partial<RequestOTPResponse>>("/request-otp/", { phone_number });
+        const response = await request.post<Partial<RequestOTPResponse>>("/request-otp/", { phone_number });
+        const payload = response.data;
 
-        if (!response.ok || !payload) {
+        if (!payload) {
             return {
                 success: false,
                 message: extractMessage(payload, "ارسال کد تایید ناموفق بود"),
@@ -206,7 +181,7 @@ export const requestOTP = async ({ phone_number }: { phone_number: string }): Pr
     } catch (error) {
         return {
             success: false,
-            message: error instanceof Error ? error.message : DEFAULT_ERROR_MESSAGE,
+            message: extractAxiosErrorMessage(error),
             data: {
                 phone_number,
                 is_new: false,
@@ -239,60 +214,37 @@ export const verifyOTP = async ({
     }
 
     try {
-        const primaryAttempt = await postJson("/verify-otp/", {
-            ...commonFields,
-            otp,
-        });
-        const primaryNormalized = normalizeVerifyPayload(primaryAttempt.payload);
-
-        if (primaryAttempt.response.ok && primaryNormalized) {
-            if (primaryNormalized.success && primaryNormalized.data.tokens && primaryNormalized.data.user) {
-                await createSessionFromVerifyPayload({
-                    user: primaryNormalized.data.user,
-                    tokens: primaryNormalized.data.tokens,
-                    fallbackFirstName: first_name,
-                    fallbackLastName: last_name,
-                    fallbackPhoneNumber: phone_number,
-                });
-            }
-
-            return primaryNormalized;
-        }
-
-        const fallbackAttempt = await postJson("/verify-otp/", {
+        const response = await request.post("/verify-otp/", {
             ...commonFields,
             code: otp,
         });
-        const fallbackNormalized = normalizeVerifyPayload(fallbackAttempt.payload);
+        const normalizedPayload = normalizeVerifyPayload(response.data);
 
-        if (!fallbackAttempt.response.ok || !fallbackNormalized) {
+        if (!normalizedPayload) {
             return {
                 success: false,
-                message: extractMessage(
-                    fallbackAttempt.payload ?? primaryAttempt.payload,
-                    "تایید کد ناموفق بود",
-                ),
+                message: extractMessage(response.data, "تایید کد ناموفق بود"),
                 data: {
                     is_new: false,
                 },
             };
         }
 
-        if (fallbackNormalized.success && fallbackNormalized.data.tokens && fallbackNormalized.data.user) {
+        if (normalizedPayload.success && normalizedPayload.data.tokens && normalizedPayload.data.user) {
             await createSessionFromVerifyPayload({
-                user: fallbackNormalized.data.user,
-                tokens: fallbackNormalized.data.tokens,
+                user: normalizedPayload.data.user,
+                tokens: normalizedPayload.data.tokens,
                 fallbackFirstName: first_name,
                 fallbackLastName: last_name,
                 fallbackPhoneNumber: phone_number,
             });
         }
 
-        return fallbackNormalized;
+        return normalizedPayload;
     } catch (error) {
         return {
             success: false,
-            message: error instanceof Error ? error.message : DEFAULT_ERROR_MESSAGE,
+            message: extractAxiosErrorMessage(error),
             data: {
                 is_new: false,
             },
@@ -304,24 +256,30 @@ export const verifyOTP = async ({
 
 export const getHistory = async () => {
     try {
-        const session = await getSession()
-        const accessToken = await session?.access;
+        const session = await getSession();
+        const accessToken =  session?.access;
 
+        if (!accessToken) {
+            return {
+                success: false,
+                message: "توکن دسترسی نامعتبر است",
+            };
+        }
         const response = await request.get("/chats/", {
             headers: {
-                Authorization: `Bearer ${accessToken}`
-            }
-        })
-        const data = await response.data
-        return data
+                Authorization: `Bearer ${accessToken}`,
+            },
+        });
+
+        console.log(response)
+        return response.data;
     } catch (error) {
         return {
             success: false,
-            message: error instanceof Error ? error.message : DEFAULT_ERROR_MESSAGE,
-        }
-
+            message: extractAxiosErrorMessage(error),
+        };
     }
-}
+};
 
 
 
@@ -329,14 +287,17 @@ export const getHistory = async () => {
 
 export const checkUserRegisteration = async (phone_number: string) => {
     try {
-        const response = await request.get(`/check/?phone=${phone_number}`)
-        const data = await response.data
-        return data
+        const response = await request.get("/check/", {
+            params: {
+                phone: phone_number,
+            },
+        });
+
+        return response.data;
     } catch (error) {
         return {
             success: false,
-            message: error instanceof Error ? error.message : DEFAULT_ERROR_MESSAGE,
-        }
-
+            message: extractAxiosErrorMessage(error),
+        };
     }
-}
+};

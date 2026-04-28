@@ -10,7 +10,6 @@ const EMPTY_MESSAGES: ReturnType<typeof useChatStore.getState>["chats"][string] 
 
 const ChatThread = () => {
   const { session } = useSession()
-  // console.log(session)
   const params = useParams<{ chatId?: string | string[] }>();
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const hasInitialScroll = useRef(false);

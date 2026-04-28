@@ -78,7 +78,9 @@ const AuthFlow = ({ mode, initialMobile = "" }: AuthFlowProps) => {
       try {
         const normalizedMobile = result.data.mobile;
 
-        const registerationResponse = await checkUserRegisteration(normalizedMobile,);
+        const registerationResponse = await checkUserRegisteration(normalizedMobile);
+
+        console.log(registerationResponse)
 
         if (!registerationResponse.success || !registerationResponse.data.exists) {
           router.push(`/auth/register?phone_number=${encodeURIComponent(normalizedMobile)}`);
