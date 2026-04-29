@@ -1,11 +1,12 @@
 import { cn } from "@/lib/utils";
 
 type MessageContentProps = {
-  text: string;
+  content: string;
   className?: string;
+  showTypingCursor?: boolean;
 };
 
-const MessageContent = ({ text, className }: MessageContentProps) => {
+const MessageContent = ({ content, className, showTypingCursor = false }: MessageContentProps) => {
   return (
     <p
       className={cn(
@@ -13,7 +14,10 @@ const MessageContent = ({ text, className }: MessageContentProps) => {
         className,
       )}
     >
-      {text}
+      {content}
+      {showTypingCursor ? (
+        <span className="mr-1 inline-block h-[1.05em] w-0.5 animate-pulse rounded-sm bg-current align-middle" />
+      ) : null}
     </p>
   );
 };

@@ -9,10 +9,16 @@ type ChatMessageProps = {
 
 const ChatMessage = ({ message, groupedWithPrevious = false }: ChatMessageProps) => {
   if (message.role === "assistant") {
-    return <AssistantMessageCard text={message.text} grouped={groupedWithPrevious} />;
+    return (
+      <AssistantMessageCard
+        content={message.content}
+        status={message.status}
+        grouped={groupedWithPrevious}
+      />
+    );
   }
 
-  return <UserMessageCard text={message.text} grouped={groupedWithPrevious} />;
+  return <UserMessageCard content={message.content} grouped={groupedWithPrevious} status={message.status} />;
 };
 
 export default ChatMessage;

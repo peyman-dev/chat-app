@@ -1,16 +1,10 @@
-"use client"
-import { useChatWebSocket } from "@/lib/hooks/socket"
-import { ReactNode } from "react"
+"use client";
 
-const SocketProvider = ({ children }: {
-    children: ReactNode
-}) => {
-    const initialSocket = useChatWebSocket()
-    return (
-        <>
-            {children}
-        </>
-    )
-}
+import { ChatWebSocketProvider } from "@/lib/hooks/socket";
+import { ReactNode } from "react";
 
-export default SocketProvider
+const SocketProvider = ({ children }: { children: ReactNode }) => {
+  return <ChatWebSocketProvider>{children}</ChatWebSocketProvider>;
+};
+
+export default SocketProvider;

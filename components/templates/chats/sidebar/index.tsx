@@ -1,11 +1,9 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { nanoid } from "nanoid";
 import { AnimatePresence, motion } from "motion/react";
 import { useParams, useRouter } from "next/navigation";
 import { useTheme } from "@/components/providers/theme-provider";
-import { useChatStore } from "@/lib/stores/chat-store";
 import MobileSidebarDrawer from "./mobile-sidebar-drawer";
 import MobileSidebarToggle from "./mobile-sidebar-toggle";
 import SidebarExpandedPanel from "./sidebar-expanded-panel";
@@ -18,7 +16,6 @@ const SIDEBAR_EASE: [number, number, number, number] = [0.22, 1, 0.36, 1];
 const Sidebar = () => {
   const router = useRouter();
   const params = useParams<{ chatId?: string | string[] }>();
-  const createChat = useChatStore((state) => state.createChat);
   const { isDarkMode, toggleTheme } = useTheme();
   const { data, isLoading, isError } = useQuery({
     queryFn: getHistory,
@@ -41,11 +38,8 @@ const Sidebar = () => {
     return chatId ?? null;
   }, [params]);
 
-
   const handleCreateChat = () => {
-    const chatId = nanoid(14);
-    createChat(chatId);
-    router.push(`/chats/${chatId}`);
+    router.push("/chats");
     setIsMobileDrawerOpen(false);
   };
 

@@ -2,10 +2,9 @@
 
 import { FormEvent, useMemo, useState } from "react";
 import { Mic, Paperclip, Smile } from "lucide-react";
-import { useParams, usePathname, useRouter } from "next/navigation";
-import { nanoid } from "nanoid";
+import { useParams } from "next/navigation";
 import { cn } from "@/lib/utils";
-import { useChatStore } from "@/lib/stores/chat-store";
+import { useChatWebSocket } from "@/lib/hooks/socket";
 import IconActionButton from "./icon-action-button";
 import SubmitButton from "./submit-button";
 
@@ -15,10 +14,13 @@ type ChatComposerProps = {
 
 const ChatComposer = ({ className }: ChatComposerProps) => {
   const [text, setText] = useState("");
-  const router = useRouter();
-  const pathname = usePathname();
   const params = useParams<{ chatId?: string | string[] }>();
-  const sendMessage = useChatStore((state) => state.sendMessage);
+  const {
+    sendMessage: sendSocketMessage,
+    stopGeneration,
+    isAssistantBusy,
+    errorMessage,
+  } = useChatWebSocket();
 
   const activeChatId = useMemo(() => {
     const value = params?.chatId;
@@ -30,9 +32,12 @@ const ChatComposer = ({ className }: ChatComposerProps) => {
     return value ?? null;
   }, [params]);
 
-
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+
+    if (isAssistantBusy) {
+      return;
+    }
 
     const message = text.trim();
 
@@ -40,74 +45,84 @@ const ChatComposer = ({ className }: ChatComposerProps) => {
       return;
     }
 
-    if (pathname === "/chats") {
-      const nextChatId = nanoid(14);
-      sendMessage(nextChatId, message);
-      
-      setText("");
-      router.push(`/chats/${nextChatId}`);
+    const didSend = sendSocketMessage({ message, chatId: activeChatId });
+
+    if (!didSend) {
       return;
     }
 
-    if (!activeChatId) {
-      return;
-    }
-
-    sendMessage(activeChatId, message);
     setText("");
   };
 
   return (
-    <form
-      dir="ltr"
-      onSubmit={handleSubmit}
-      className={cn(
-        "mx-auto flex w-full max-w-[1400px] min-w-0 items-center gap-2 rounded-[20px] border px-2.5 py-2.5 sm:gap-3 sm:rounded-[22px] sm:px-4 sm:py-4",
-        "border-[#d3dee8] bg-[#dce8f2]/95",
-        "shadow-[inset_0_1px_0_rgba(255,255,255,0.35),0_8px_24px_rgba(15,23,42,0.08)]",
-        "dark:border-[#747ab0]/55 dark:bg-[#16154d]/82 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.18),0_12px_28px_rgba(0,0,0,0.35)]",
-        className,
-      )}
-    >
-      <SubmitButton text={text} disabled={!text.trim()} />
-
-      <div
+    <div className={cn("mx-auto w-full max-w-[1400px] min-w-0", className)}>
+      <form
+        dir="ltr"
+        onSubmit={handleSubmit}
         className={cn(
-          "flex min-h-[46px] min-w-0 flex-1 items-center gap-1 rounded-2xl px-2.5 sm:min-h-[54px] sm:gap-2 sm:px-4",
-          "bg-[#f5f7f9] text-[#64748b]",
-          "dark:bg-[#8f8aad] dark:text-white/75",
+          "flex w-full items-center gap-2 rounded-[20px] border px-2.5 py-2.5 sm:gap-3 sm:rounded-[22px] sm:px-4 sm:py-4",
+          "border-[#d3dee8] bg-[#dce8f2]/95",
+          "shadow-[inset_0_1px_0_rgba(255,255,255,0.35),0_8px_24px_rgba(15,23,42,0.08)]",
+          "dark:border-[#747ab0]/55 dark:bg-[#16154d]/82 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.18),0_12px_28px_rgba(0,0,0,0.35)]",
         )}
       >
-        <div className="flex shrink-0 items-center gap-px sm:gap-0.5">
-          <IconActionButton aria-label="Insert emoji">
-            <Smile className="size-4 sm:size-5" />
-          </IconActionButton>
-
-          <IconActionButton aria-label="Attach file">
-            <Paperclip className="size-4 sm:size-5" />
-          </IconActionButton>
-        </div>
-
-        <input
-          dir="rtl"
-          value={text}
-          onChange={(event) => setText(event.target.value)}
-          placeholder="اینجا تایپ کنید..."
-          className={cn(
-            "h-10 min-w-0 flex-1 bg-transparent text-right text-[0.97rem] leading-none outline-none sm:h-11 sm:text-base md:text-[32px]",
-            "placeholder:text-[#7f8a97] dark:placeholder:text-white/82",
-          )}
+        <SubmitButton
+          disabled={!text.trim() || isAssistantBusy}
+          isBusy={isAssistantBusy}
+          onStop={stopGeneration}
         />
 
-        <button
-          type="button"
-          aria-label="Voice input"
-          className="grid size-7 shrink-0 place-items-center rounded-full text-[#0f80cf] transition-colors hover:bg-black/5 dark:text-white/95 dark:hover:bg-white/10 sm:size-8"
+        <div
+          className={cn(
+            "flex min-h-[46px] min-w-0 flex-1 items-center gap-1 rounded-2xl px-2.5 sm:min-h-[54px] sm:gap-2 sm:px-4",
+            "bg-[#f5f7f9] text-[#64748b]",
+            "dark:bg-[#8f8aad] dark:text-white/75",
+            isAssistantBusy ? "opacity-80" : "",
+          )}
         >
-          <Mic className="size-4 sm:size-5" />
-        </button>
-      </div>
-    </form>
+          <div className="flex shrink-0 items-center gap-px sm:gap-0.5">
+            <IconActionButton aria-label="Insert emoji">
+              <Smile className="size-4 sm:size-5" />
+            </IconActionButton>
+
+            <IconActionButton aria-label="Attach file">
+              <Paperclip className="size-4 sm:size-5" />
+            </IconActionButton>
+          </div>
+
+          <input
+            dir="rtl"
+            value={text}
+            disabled={isAssistantBusy}
+            onChange={(event) => setText(event.target.value)}
+            onKeyDown={(event) => {
+              if (isAssistantBusy && event.key === "Enter") {
+                event.preventDefault();
+              }
+            }}
+            placeholder={isAssistantBusy ? "لطفا تا پایان پاسخ صبر کنید..." : "اینجا تایپ کنید..."}
+            className={cn(
+              "h-10 min-w-0 flex-1 bg-transparent text-right text-[0.97rem] leading-none outline-none sm:h-11 sm:text-base md:text-[32px]",
+              "placeholder:text-[#7f8a97] dark:placeholder:text-white/82",
+              "disabled:cursor-not-allowed disabled:opacity-70",
+            )}
+          />
+
+          <button
+            type="button"
+            aria-label="Voice input"
+            disabled={isAssistantBusy}
+            className="grid size-7 shrink-0 place-items-center rounded-full text-[#0f80cf] transition-colors hover:bg-black/5 disabled:cursor-not-allowed disabled:opacity-45 dark:text-white/95 dark:hover:bg-white/10 sm:size-8"
+          >
+            <Mic className="size-4 sm:size-5" />
+          </button>
+        </div>
+      </form>
+
+      {errorMessage ? (
+        <p className="mt-2 text-right text-sm font-medium text-rose-600 dark:text-rose-300">{errorMessage}</p>
+      ) : null}
+    </div>
   );
 };
 

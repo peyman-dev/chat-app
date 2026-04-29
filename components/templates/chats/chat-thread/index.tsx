@@ -4,12 +4,10 @@ import { useEffect, useMemo, useRef } from "react";
 import { useParams } from "next/navigation";
 import ChatMessage from "@/components/templates/chats/chat-thread/chat-message";
 import { useChatStore } from "@/lib/stores/chat-store";
-import { useSession } from "@/lib/stores/session-store";
 
 const EMPTY_MESSAGES: ReturnType<typeof useChatStore.getState>["chats"][string] = [];
 
 const ChatThread = () => {
-  const { session } = useSession()
   const params = useParams<{ chatId?: string | string[] }>();
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const hasInitialScroll = useRef(false);
@@ -27,6 +25,13 @@ const ChatThread = () => {
   const messages = useChatStore((state) =>
     activeChatId ? (state.chats[activeChatId] ?? EMPTY_MESSAGES) : EMPTY_MESSAGES,
   );
+  const scrollSignature = useMemo(
+    () =>
+      messages
+        .map((message) => `${message.id}:${message.status ?? "done"}:${message.content.length}`)
+        .join("|"),
+    [messages],
+  );
 
   useEffect(() => {
     const node = scrollRef.current;
@@ -43,7 +48,7 @@ const ChatThread = () => {
     });
 
     hasInitialScroll.current = true;
-  }, [activeChatId, messages.length]);
+  }, [activeChatId, messages.length, scrollSignature]);
 
   return (
     <div className="mx-auto flex h-full w-full  flex-col px-4 pb-44  sm:px-6 lg:px-8">
