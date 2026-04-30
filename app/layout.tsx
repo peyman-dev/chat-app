@@ -7,6 +7,7 @@ import "@/public/css/globals.css";
 import { configDotenv } from 'dotenv'
 import { ToastContainer } from "react-toastify";
 import QueryProvider from "@/components/providers/query-provider";
+import MantineAppProvider from "@/components/providers/mantine-provider";
 
 configDotenv()
 
@@ -29,11 +30,13 @@ export default function RootLayout({
       </head>
       <body className="min-h-screen antialiased">
         <QueryProvider>
-          <ToastContainer className={"font-yekanbakh! **:font-yekanbakh!"} />
-          <ThemeProvider>
-            <SessionBootstrapper />
-            {children}
-          </ThemeProvider>
+          <MantineAppProvider>
+            <ToastContainer className={"font-yekanbakh! **:font-yekanbakh!"} />
+            <ThemeProvider>
+              <SessionBootstrapper />
+              {children}
+            </ThemeProvider>
+          </MantineAppProvider>
         </QueryProvider>
       </body>
     </html>
