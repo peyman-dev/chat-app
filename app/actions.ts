@@ -1,6 +1,12 @@
 "use server";
 import { getSession } from "@/lib/auth/get-session";
 import { createSessionFromVerifyPayload } from "@/lib/auth/session";
+import {
+    normalizeContentsPage,
+    normalizeSingleContent,
+    type AdminContentItem,
+    type AdminContentsPageData,
+} from "@/lib/admin-contents";
 import { request } from "@/lib/axios";
 import axios from "axios";
 
@@ -257,7 +263,7 @@ export const verifyOTP = async ({
 export const getHistory = async () => {
     try {
         const session = await getSession();
-        const accessToken =  session?.access;
+        const accessToken = session?.access;
 
         if (!accessToken) {
             return {
@@ -301,3 +307,343 @@ export const checkUserRegisteration = async (phone_number: string) => {
         };
     }
 };
+
+type GetContentsPageInput = {
+    page?: number;
+    pageSize?: number;
+};
+
+type GetContentsPageResponse = {
+    success: boolean;
+    message?: string;
+    data: AdminContentsPageData;
+};
+
+type GetContentByIdResponse = {
+    success: boolean;
+    message?: string;
+    data?: AdminContentItem;
+};
+
+type UpdateContentByIdInput = {
+    contentId: string;
+    title: string;
+    content: string;
+};
+
+type UpdateContentByIdResponse = {
+    success: boolean;
+    message?: string;
+    data?: AdminContentItem;
+};
+
+const getAuthorizedHeaders = async () => {
+    const session = await getSession();
+    const accessToken = session?.access;
+
+    if (!accessToken) {
+        return null;
+    }
+
+    return {
+        Authorization: `Bearer ${accessToken}`,
+    };
+};
+
+const buildFallbackPageData = (page: number, pageSize: number): AdminContentsPageData => {
+    return {
+        items: [],
+        pagination: {
+            currentPage: page,
+            pageSize,
+            totalCount: 0,
+            totalPages: 1,
+        },
+    };
+};
+
+export const getContentsPage = async ({
+    page = 1,
+    pageSize = 20,
+}: GetContentsPageInput = {}): Promise<GetContentsPageResponse> => {
+    const safePage = Number.isFinite(page) && page > 0 ? page : 1;
+    const safePageSize = Number.isFinite(pageSize) && pageSize > 0 ? pageSize : 20;
+
+    try {
+        const headers = await getAuthorizedHeaders();
+        if (!headers) {
+            return {
+                success: false,
+                message: "توکن دسترسی نامعتبر است",
+                data: buildFallbackPageData(safePage, safePageSize),
+            };
+        }
+
+        const response = await request.get("/admin/services/", {
+            headers,
+            params: {
+                page: safePage,
+                page_size: safePageSize,
+            },
+        });
+
+        return {
+            success: true,
+            data: normalizeContentsPage(response.data, {
+                page: safePage,
+                pageSize: safePageSize,
+            }),
+        };
+    } catch (error) {
+        return {
+            success: false,
+            message: extractAxiosErrorMessage(error),
+            data: buildFallbackPageData(safePage, safePageSize),
+        };
+    }
+};
+
+export const getContentById = async (contentId: string): Promise<GetContentByIdResponse> => {
+    const normalizedId = contentId.trim();
+
+    if (!normalizedId) {
+        return {
+            success: false,
+            message: "شناسه محتوا معتبر نیست",
+        };
+    }
+
+    try {
+        const headers = await getAuthorizedHeaders();
+        if (!headers) {
+            return {
+                success: false,
+                message: "توکن دسترسی نامعتبر است",
+            };
+        }
+
+        const directEndpoints = [
+            `/admin/services/${encodeURIComponent(normalizedId)}/`,
+            `/admin/services/${encodeURIComponent(normalizedId)}`,
+        ];
+
+        for (const endpoint of directEndpoints) {
+            try {
+                const directResponse = await request.get(endpoint, { headers });
+                const normalized = normalizeSingleContent(directResponse.data);
+                if (normalized) {
+                    return {
+                        success: true,
+                        data: normalized,
+                    };
+                }
+            } catch {
+                // Try next endpoint pattern.
+            }
+        }
+
+        const listResponse = await request.get("/admin/services/", { headers });
+        const pageData = normalizeContentsPage(listResponse.data, { page: 1, pageSize: 500 });
+        const matched = pageData.items.find((item) => item.id === normalizedId);
+
+        if (!matched) {
+            return {
+                success: false,
+                message: "محتوا پیدا نشد",
+            };
+        }
+
+        return {
+            success: true,
+            data: matched,
+        };
+    } catch (error) {
+        return {
+            success: false,
+            message: extractAxiosErrorMessage(error),
+        };
+    }
+};
+
+export const updateContentById = async ({
+    contentId,
+    title,
+    content,
+}: UpdateContentByIdInput): Promise<UpdateContentByIdResponse> => {
+    const normalizedId = contentId.trim();
+    if (!normalizedId) {
+        return {
+            success: false,
+            message: "شناسه محتوا معتبر نیست",
+        };
+    }
+
+    try {
+        const headers = await getAuthorizedHeaders();
+        if (!headers) {
+            return {
+                success: false,
+                message: "توکن دسترسی نامعتبر است",
+            };
+        }
+
+        const payload = {
+            title: title.trim(),
+            content: content.trim(),
+        };
+
+        const endpoints = [
+            `/admin/services/${encodeURIComponent(normalizedId)}/`,
+            `/admin/services/${encodeURIComponent(normalizedId)}`,
+        ];
+
+        for (const endpoint of endpoints) {
+            try {
+                const response = await request.patch(endpoint, payload, { headers });
+                const normalized = normalizeSingleContent(response.data);
+                if (normalized) {
+                    return {
+                        success: true,
+                        data: normalized,
+                    };
+                }
+
+                return {
+                    success: true,
+                    data: {
+                        id: normalizedId,
+                        title: payload.title || "بدون عنوان",
+                        content: payload.content,
+                        updatedAt: null,
+                        raw: {},
+                    },
+                };
+            } catch {
+                // Try next endpoint pattern.
+            }
+        }
+
+        return {
+            success: false,
+            message: "بروزرسانی محتوا ناموفق بود",
+        };
+    } catch (error) {
+        return {
+            success: false,
+            message: extractAxiosErrorMessage(error),
+        };
+    }
+};
+
+export const getServices = async () => {
+    const response = await getContentsPage();
+
+    if (!response.success) {
+        return {
+            success: false,
+            message: response.message ?? "خطا در دریافت اطلاعات",
+        };
+    }
+
+    return {
+        success: true,
+        data: response.data.items,
+        pagination: response.data.pagination,
+    };
+};
+type UpdateServiceInput = {
+    id: string;
+    name: string;
+    full_content: string;
+};
+
+type UpdateServiceResponse = {
+    success: boolean;
+    message?: string;
+    data?: AdminContentItem;
+};
+
+// /admin/services/{service_id}/
+export const updateService = async ({
+    id,
+    name,
+    full_content,
+}: UpdateServiceInput): Promise<UpdateServiceResponse> => {
+    const normalizedId = id.trim();
+
+    if (!normalizedId) {
+        return {
+            success: false,
+            message: "شناسه محتوا معتبر نیست",
+        };
+    }
+
+    try {
+        // const headers = await getAuthorizedHeaders();
+        const session = await getSession();
+        const accessToken = await session?.access
+        4
+
+        const payload = {
+            title: name.trim(),
+            full_content: full_content.trim(),
+        };
+
+        console.log(payload)
+        const response = await request.put(`/admin/services/${id}/`, payload, {
+            headers: {
+                Authorization: `Bearer ${accessToken}`
+            }
+        });
+
+        const normalized = normalizeSingleContent(response.data);
+        if (normalized) {
+            return {
+                success: true,
+                data: normalized,
+            };
+        }
+
+        return {
+            success: true,
+            data: {
+                id: normalizedId,
+                title: payload.title || "بدون عنوان",
+                content: payload.full_content,
+                updatedAt: null,
+                raw: isRecord(response.data) ? response.data : {},
+            },
+        };
+    } catch (error) {
+        return {
+            success: false,
+            message: extractAxiosErrorMessage(error),
+        };
+    }
+};
+
+
+// 
+
+export const getCategories = async () => {
+    try {
+        const session = await getSession();
+        const accessToken = await session?.access
+
+        const response = await request.get("/admin/categories/", {
+            headers: {
+                Authorization: `Bearer ${accessToken}`
+            }
+        })
+
+        const data = await response.data
+        return data
+    } catch (error) {
+        return {
+            success: false,
+            error
+        }
+    }
+}
+
+

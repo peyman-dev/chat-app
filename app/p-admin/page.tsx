@@ -1,8 +1,11 @@
 import ActionsTable from "@/components/templates/admin-panel/actions-table";
 import Overview from "@/components/templates/admin-panel/overview";
 import TabsSelector from "@/components/templates/admin-panel/tabs-selector";
+import { getCategories } from "../actions";
 
-export default function Page() {
+export default async function Page() {
+  const kir = await getCategories();
+  console.log(kir)
   const tabItems = [
     { label: "عنوان 1", value: "title-1" },
     { label: "عنوان 2", value: "title-2" },

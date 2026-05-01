@@ -16,6 +16,7 @@
     "@radix-ui/react-tooltip": "^1.2.8",
     "@tabler/icons-react": "^3.41.1",
     "@tanstack/react-query": "^5.100.5",
+    "antd": "^6.3.7",
     "axios": "^1.15.2",
     "bcryptjs": "^3.0.3",
     "clsx": "^2.1.1",

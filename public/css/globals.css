@@ -522,3 +522,21 @@ button {
     border-bottom: 1px solid var(--sidebar-border);
   }
 }
+
+.actions-grid-dropdown .ant-dropdown-menu {
+  display: flex;
+  gap: 4px;
+  padding: 8px;
+  border: 1px solid #e4e6ec;
+  border-radius: 12px;
+  background: #ffffff;
+  box-shadow: 0 8px 24px rgba(14, 0, 86, 0.12);
+}
+
+.actions-grid-dropdown .ant-dropdown-menu-item {
+  @apply w-full! text-base! px-2!;
+}
+
+.actions-grid-dropdown .ant-dropdown-menu-title-content {
+  line-height: 1;
+}
