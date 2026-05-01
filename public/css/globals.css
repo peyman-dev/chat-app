@@ -59,7 +59,7 @@ body {
     radial-gradient(circle at 72% 18%, rgba(244, 114, 182, 0.28), transparent 18%),
     radial-gradient(circle at 32% 78%, rgba(192, 132, 252, 0.22), transparent 16%),
     linear-gradient(135deg, #fbfdff 0%, #eff6ff 48%, #f8fafc 100%);
-  font-family: Tahoma, "Segoe UI", sans-serif;
+    @apply font-yekanbakh!
 }
 
 .dark body {

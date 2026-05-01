@@ -311,6 +311,7 @@ export const checkUserRegisteration = async (phone_number: string) => {
 type GetContentsPageInput = {
     page?: number;
     pageSize?: number;
+    categoryId?: string;
 };
 
 type GetContentsPageResponse = {
@@ -365,9 +366,11 @@ const buildFallbackPageData = (page: number, pageSize: number): AdminContentsPag
 export const getContentsPage = async ({
     page = 1,
     pageSize = 20,
+    categoryId,
 }: GetContentsPageInput = {}): Promise<GetContentsPageResponse> => {
     const safePage = Number.isFinite(page) && page > 0 ? page : 1;
     const safePageSize = Number.isFinite(pageSize) && pageSize > 0 ? pageSize : 20;
+    const safeCategoryId = typeof categoryId === "string" ? categoryId.trim() : "";
 
     try {
         const headers = await getAuthorizedHeaders();
@@ -384,6 +387,7 @@ export const getContentsPage = async ({
             params: {
                 page: safePage,
                 page_size: safePageSize,
+                ...(safeCategoryId ? { category_id: safeCategoryId, category: safeCategoryId } : {}),
             },
         });
 
@@ -582,7 +586,6 @@ export const updateService = async ({
         // const headers = await getAuthorizedHeaders();
         const session = await getSession();
         const accessToken = await session?.access
-        4
 
         const payload = {
             title: name.trim(),
@@ -645,5 +648,3 @@ export const getCategories = async () => {
         }
     }
 }
-
-

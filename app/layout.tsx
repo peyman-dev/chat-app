@@ -4,6 +4,7 @@ import { ThemeProvider } from "@/components/providers/theme-provider";
 import SessionBootstrapper from "@/components/providers/session-bootstrapper";
 import { getThemeInitScript } from "@/lib/theme";
 import "@/public/css/globals.css";
+import "@mantine/core/styles.css";
 import "antd/dist/reset.css";
 import { configDotenv } from 'dotenv'
 import { ToastContainer } from "react-toastify";
