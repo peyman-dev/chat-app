@@ -12,7 +12,9 @@ type AssistantMessageCardProps = {
 const AssistantMessageCard = ({ content, status = "done", grouped = false }: AssistantMessageCardProps) => {
   const isThinking = status === "thinking";
   const isTyping = status === "typing";
+  const isError = status === "error";
   const showActions = status === "done" || status === "cancelled" || status === "error";
+  const errorLabel = content.trim() || "خطا در پردازش";
 
   return (
     <article className={cn("flex w-full flex-col items-end", grouped ? "mt-2" : "mt-5")}>
@@ -30,14 +32,15 @@ const AssistantMessageCard = ({ content, status = "done", grouped = false }: Ass
                 <span className="size-1.5 animate-pulse rounded-full bg-current [animation-delay:280ms]" />
               </span>
             </div>
+          ) : isError ? (
+            <div className="inline-flex max-w-full items-center rounded-lg border border-rose-400/75 bg-rose-50 px-3 py-1.5 text-[0.86rem] font-medium text-rose-700 dark:border-rose-300/55 dark:bg-rose-500/10 dark:text-rose-200">
+              <span className="truncate">{errorLabel}</span>
+            </div>
           ) : (
             <MessageContent
               content={content}
               showTypingCursor={isTyping}
-              className={cn(
-                "text-[0.95rem] font-medium sm:text-[1rem]",
-                status === "error" ? "text-rose-600 dark:text-rose-300" : "",
-              )}
+              className="text-[0.95rem] font-medium sm:text-[1rem]"
             />
           )}
         </div>

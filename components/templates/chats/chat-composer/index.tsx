@@ -47,6 +47,7 @@ const ChatComposer = ({ className }: ChatComposerProps) => {
 
     const didSend = sendSocketMessage({ message, chatId: activeChatId });
 
+
     if (!didSend) {
       return;
     }
@@ -56,6 +57,9 @@ const ChatComposer = ({ className }: ChatComposerProps) => {
 
   return (
     <div className={cn("mx-auto w-full max-w-[1400px] min-w-0", className)}>
+      {errorMessage ? (
+        <p className="mt-2 text-right text-sm font-medium text-rose-600 dark:text-rose-300">{errorMessage}</p>
+      ) : null}
       <form
         dir="ltr"
         onSubmit={handleSubmit}
@@ -119,9 +123,7 @@ const ChatComposer = ({ className }: ChatComposerProps) => {
         </div>
       </form>
 
-      {errorMessage ? (
-        <p className="mt-2 text-right text-sm font-medium text-rose-600 dark:text-rose-300">{errorMessage}</p>
-      ) : null}
+
     </div>
   );
 };

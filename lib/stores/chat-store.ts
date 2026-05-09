@@ -38,7 +38,13 @@ type ChatStore = {
   addOrUpdateMessage: (chatId: string, message: ChatMessage) => void;
   addOrUpdateMessages: (chatId: string, messages: ChatMessage[]) => void;
   addOptimisticUserMessage: (chatId: string, content: string) => ChatMessage | null;
-  markUserMessageSaved: (chatId: string, payload: { content?: string; created_at?: string }) => void;
+  markUserMessageSaved: (chatId: string, payload: {
+    optimisticId?: string;
+    content?: string;
+    created_at?: string;
+    serverId?: number;
+  }) => void;
+  markLatestPendingUserMessageError: (chatId: string, payload?: { content?: string }) => void;
   markMessageStatus: (chatId: string, messageId: string, status: ChatMessageStatus) => void;
   updateMessageContent: (
     chatId: string,
@@ -50,6 +56,7 @@ type ChatStore = {
 };
 
 const DEFAULT_CHAT_TITLE = "چت جدید";
+const DUPLICATE_TIME_WINDOW_MS = 8_000;
 
 const createSummary = (chatId: string, title = DEFAULT_CHAT_TITLE): ChatSummary => ({
   id: chatId,
@@ -58,6 +65,15 @@ const createSummary = (chatId: string, title = DEFAULT_CHAT_TITLE): ChatSummary 
 });
 
 const normalizeContent = (value: string) => value.trim().replace(/\s+/g, " ");
+
+const parseTimestamp = (value?: string) => {
+  if (!value) {
+    return null;
+  }
+
+  const timestamp = new Date(value).getTime();
+  return Number.isFinite(timestamp) ? timestamp : null;
+};
 
 const areMessagesDuplicate = (a: ChatMessage, b: ChatMessage) => {
   if (a.id && b.id && a.id === b.id) {
@@ -72,7 +88,32 @@ const areMessagesDuplicate = (a: ChatMessage, b: ChatMessage) => {
     return true;
   }
 
-  return false;
+  if (a.role !== b.role) {
+    return false;
+  }
+
+  const normalizedA = normalizeContent(a.content);
+  const normalizedB = normalizeContent(b.content);
+
+  if (!normalizedA || normalizedA !== normalizedB) {
+    return false;
+  }
+
+  const aChatId = a.chat_id ?? null;
+  const bChatId = b.chat_id ?? null;
+
+  if (aChatId !== null && bChatId !== null && aChatId !== bChatId) {
+    return false;
+  }
+
+  const aTime = parseTimestamp(a.created_at);
+  const bTime = parseTimestamp(b.created_at);
+
+  if (aTime === null || bTime === null) {
+    return false;
+  }
+
+  return Math.abs(aTime - bTime) <= DUPLICATE_TIME_WINDOW_MS;
 };
 
 const mergeMessage = (current: ChatMessage, incoming: ChatMessage): ChatMessage => {
@@ -132,23 +173,20 @@ const upsertMessages = (existing: ChatMessage[], incoming: ChatMessage[]) => {
     next.push(message);
   });
 
-  return next;
+  return dedupePreserveOrder(next);
 };
 
 const dedupePreserveOrder = (messages: ChatMessage[]) => {
-  const seen = new Set<string>();
   const next: ChatMessage[] = [];
 
   messages.forEach((message) => {
-    const fingerprint = message.id
-      ? `id:${message.id}`
-      : `${message.role}|${normalizeContent(message.content)}|${message.chat_id ?? "null"}|${message.created_at ?? ""}`;
+    const duplicateIndex = next.findIndex((item) => areMessagesDuplicate(item, message));
 
-    if (seen.has(fingerprint)) {
+    if (duplicateIndex >= 0) {
+      next[duplicateIndex] = mergeMessage(next[duplicateIndex], message);
       return;
     }
 
-    seen.add(fingerprint);
     next.push(message);
   });
 
@@ -195,7 +233,7 @@ export const useChatStore = create<ChatStore>((set) => ({
     set((state) => {
       const fromMessages = state.chats[fromChatId] ?? [];
       const toMessages = state.chats[toChatId] ?? [];
-      const merged = upsertMessages(toMessages, fromMessages);
+      const merged = dedupePreserveOrder(upsertMessages(toMessages, fromMessages));
 
       const nextChats = {
         ...state.chats,
@@ -237,7 +275,7 @@ export const useChatStore = create<ChatStore>((set) => ({
   addOrUpdateMessage: (chatId, message) =>
     set((state) => {
       const current = state.chats[chatId] ?? [];
-      const nextMessages = upsertMessages(current, [message]);
+      const nextMessages = dedupePreserveOrder(upsertMessages(current, [message]));
 
       return {
         chats: {
@@ -255,7 +293,7 @@ export const useChatStore = create<ChatStore>((set) => ({
       return {
         chats: {
           ...state.chats,
-          [chatId]: upsertMessages(current, messages),
+          [chatId]: dedupePreserveOrder(upsertMessages(current, messages)),
         },
         summaries: withSummary(state.summaries, chatId, undefined, Date.now()),
       };
@@ -269,8 +307,8 @@ export const useChatStore = create<ChatStore>((set) => ({
     }
 
     const optimisticMessage: ChatMessage = {
-      id: `local-user-${nanoid(10)}`,
-      clientId: nanoid(14),
+      id: `temp-${Date.now()}-${nanoid(6)}`,
+      clientId: `temp-${Date.now()}-${nanoid(8)}`,
       role: "user",
       content: normalized,
       status: "sending",
@@ -302,18 +340,99 @@ export const useChatStore = create<ChatStore>((set) => ({
   markUserMessageSaved: (chatId, payload) =>
     set((state) => {
       const current = [...(state.chats[chatId] ?? [])];
+      const optimisticId = payload.optimisticId?.trim();
       const normalizedContent = payload.content?.trim();
+      const serverId = payload.serverId;
+      const resolvedChatId = /^\d+$/.test(chatId) ? Number(chatId) : null;
 
+      let didUpdate = false;
+      let optimisticIndex = -1;
+
+      if (optimisticId) {
+        optimisticIndex = current.findIndex((message) => message.id === optimisticId && message.role === "user");
+      }
+
+      if (optimisticIndex >= 0) {
+        const message = current[optimisticIndex];
+        current[optimisticIndex] = {
+          ...message,
+          status: "done",
+          serverId: serverId ?? message.serverId,
+          created_at: payload.created_at ?? message.created_at,
+          content: normalizedContent ?? message.content,
+          chat_id: resolvedChatId ?? message.chat_id ?? null,
+        };
+        didUpdate = true;
+      }
+
+      if (!didUpdate) {
+        for (let index = current.length - 1; index >= 0; index -= 1) {
+          const message = current[index];
+
+          if (message.role !== "user") {
+            continue;
+          }
+
+          if (message.status !== "sending") {
+            continue;
+          }
+
+          if (normalizedContent && normalizeContent(message.content) !== normalizeContent(normalizedContent)) {
+            continue;
+          }
+
+          current[index] = {
+            ...message,
+            status: "done",
+            serverId: serverId ?? message.serverId,
+            created_at: payload.created_at ?? message.created_at,
+            content: normalizedContent ?? message.content,
+            chat_id: resolvedChatId ?? message.chat_id ?? null,
+          };
+          didUpdate = true;
+          break;
+        }
+      }
+
+      if (!didUpdate && normalizedContent) {
+        const fallbackMessage: ChatMessage = {
+          id: `server-user-${serverId ?? nanoid(10)}`,
+          serverId,
+          role: "user",
+          content: normalizedContent,
+          status: "done",
+          created_at: payload.created_at ?? new Date().toISOString(),
+          chat_id: resolvedChatId,
+        };
+
+        const existingDuplicateIndex = current.findIndex((item) => areMessagesDuplicate(item, fallbackMessage));
+
+        if (existingDuplicateIndex >= 0) {
+          current[existingDuplicateIndex] = mergeMessage(current[existingDuplicateIndex], fallbackMessage);
+        } else {
+          current.push(fallbackMessage);
+        }
+      }
+
+      return {
+        chats: {
+          ...state.chats,
+          [chatId]: dedupePreserveOrder(upsertMessages([], current)),
+        },
+        summaries: withSummary(state.summaries, chatId, undefined, Date.now()),
+      };
+    }),
+
+  markLatestPendingUserMessageError: (chatId, payload) =>
+    set((state) => {
+      const current = [...(state.chats[chatId] ?? [])];
+      const normalizedContent = payload?.content?.trim();
       let didUpdate = false;
 
       for (let index = current.length - 1; index >= 0; index -= 1) {
         const message = current[index];
 
-        if (message.role !== "user") {
-          continue;
-        }
-
-        if (message.status !== "sending") {
+        if (message.role !== "user" || message.status !== "sending") {
           continue;
         }
 
@@ -323,30 +442,20 @@ export const useChatStore = create<ChatStore>((set) => ({
 
         current[index] = {
           ...message,
-          status: "done",
-          created_at: payload.created_at ?? message.created_at,
-          content: normalizedContent ?? message.content,
+          status: "error",
         };
         didUpdate = true;
         break;
       }
 
-      if (!didUpdate && normalizedContent) {
-        current.push({
-          id: `server-user-${nanoid(10)}`,
-          serverId: undefined,
-          role: "user",
-          content: normalizedContent,
-          status: "done",
-          created_at: payload.created_at ?? new Date().toISOString(),
-          chat_id: /^\d+$/.test(chatId) ? Number(chatId) : null,
-        });
+      if (!didUpdate) {
+        return state;
       }
 
       return {
         chats: {
           ...state.chats,
-          [chatId]: upsertMessages([], current),
+          [chatId]: dedupePreserveOrder(current),
         },
         summaries: withSummary(state.summaries, chatId, undefined, Date.now()),
       };

@@ -84,13 +84,29 @@ const parseRouteChatId = (value: string | string[] | undefined): string | null =
   return value ?? null;
 };
 
+const asJsonRecord = (value: string): Record<string, unknown> | null => {
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    return typeof parsed === "object" && parsed !== null ? (parsed as Record<string, unknown>) : null;
+  } catch {
+    return null;
+  }
+};
+
 const normalizeChatId = (value: unknown): string | null => {
   if (typeof value === "number" && Number.isFinite(value)) {
     return String(value);
   }
 
   if (typeof value === "string" && value.trim()) {
-    return value.trim();
+    const trimmed = value.trim();
+    const lower = trimmed.toLowerCase();
+
+    if (lower === "null" || lower === "undefined" || lower === "none") {
+      return null;
+    }
+
+    return trimmed;
   }
 
   return null;
@@ -98,7 +114,34 @@ const normalizeChatId = (value: unknown): string | null => {
 
 const extractIncomingChatId = (payload: ServerPayload): string | null => {
   const payloadData = asRecord(payload.data);
-  return normalizeChatId(payload.chat_id ?? payloadData?.chat_id ?? null);
+  const payloadDataFromString = typeof payload.data === "string" ? asJsonRecord(payload.data) : null;
+  const payloadChatRecord = asRecord(payload.chat);
+  return normalizeChatId(
+    payload.chat_id ??
+      payload.chatId ??
+      payload.chatid ??
+      payload.chatID ??
+      payload.chat ??
+      payload.conversation_id ??
+      payload.conversationId ??
+      payloadData?.chat_id ??
+      payloadData?.chatId ??
+      payloadData?.chatid ??
+      payloadData?.chatID ??
+      payloadData?.chat ??
+      payloadData?.conversation_id ??
+      payloadData?.conversationId ??
+      payloadDataFromString?.chat_id ??
+      payloadDataFromString?.chatId ??
+      payloadDataFromString?.chatid ??
+      payloadDataFromString?.chatID ??
+      payloadDataFromString?.chat ??
+      payloadDataFromString?.conversation_id ??
+      payloadDataFromString?.conversationId ??
+      payloadChatRecord?.id ??
+      payloadChatRecord?.chat_id ??
+      null,
+  );
 };
 
 const toServerChatId = (chatId: string | null | undefined): number | null => {
@@ -136,6 +179,20 @@ const firstString = (...values: unknown[]) => {
   }
 
   return "";
+};
+
+const firstNumber = (...values: unknown[]) => {
+  for (const value of values) {
+    if (typeof value === "number" && Number.isFinite(value)) {
+      return value;
+    }
+
+    if (typeof value === "string" && /^\d+$/.test(value.trim())) {
+      return Number(value.trim());
+    }
+  }
+
+  return undefined;
 };
 
 const inferRole = (value: unknown): ChatMessage["role"] | null => {
@@ -342,7 +399,10 @@ const useChatWebSocketInternal = (): ChatWebSocketValue => {
   const addOrUpdateMessages = useChatStore((state) => state.addOrUpdateMessages);
   const addOptimisticUserMessage = useChatStore((state) => state.addOptimisticUserMessage);
   const markUserMessageSaved = useChatStore((state) => state.markUserMessageSaved);
+  const markLatestPendingUserMessageError = useChatStore((state) => state.markLatestPendingUserMessageError);
+  const markMessageStatus = useChatStore((state) => state.markMessageStatus);
   const updateMessageContent = useChatStore((state) => state.updateMessageContent);
+  const removeMessage = useChatStore((state) => state.removeMessage);
 
   const routeChatId = useMemo(() => parseRouteChatId(params?.chatId), [params]);
   const serverRouteChatId = useMemo(
@@ -354,11 +414,18 @@ const useChatWebSocketInternal = (): ChatWebSocketValue => {
   const typingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const assistantMessageIdRef = useRef<string | null>(null);
   const assistantChatIdRef = useRef<string | null>(null);
+  const pathnameRef = useRef(pathname);
+  const routeChatIdRef = useRef(routeChatId);
+  const serverRouteChatIdRef = useRef(serverRouteChatId);
   const pendingLocalChatIdRef = useRef<string | null>(null);
   const activeChatIdRef = useRef<string | null>(routeChatId);
   const historyLoadedRef = useRef<Record<string, boolean>>({});
+  const shouldReplaceWithServerHistoryRef = useRef<Record<string, boolean>>({});
+  const pendingUserMessageQueueRef = useRef<Record<string, string[]>>({});
+  const deferSocketRouteSwitchRef = useRef(false);
   const ignoreNextAssistantMessageRef = useRef(false);
 
+  const [socketRouteChatId, setSocketRouteChatId] = useState<string | null>(serverRouteChatId);
   const [isConnected, setIsConnected] = useState(false);
   const [isHistoryLoading, setIsHistoryLoading] = useState(false);
   const [assistantState, setAssistantState] = useState<AssistantState>("idle");
@@ -372,7 +439,146 @@ const useChatWebSocketInternal = (): ChatWebSocketValue => {
 
   useLayoutEffect(() => {
     setActiveChatId(routeChatId);
-  }, [routeChatId, setActiveChatId]);
+    if (!routeChatId && pathname === "/chats") {
+      pendingLocalChatIdRef.current = null;
+    }
+  }, [pathname, routeChatId, setActiveChatId]);
+
+  useEffect(() => {
+    pathnameRef.current = pathname;
+    routeChatIdRef.current = routeChatId;
+    serverRouteChatIdRef.current = serverRouteChatId;
+  }, [pathname, routeChatId, serverRouteChatId]);
+
+  const enqueuePendingUserMessage = useCallback((chatId: string, messageId: string) => {
+    const queue = pendingUserMessageQueueRef.current[chatId] ?? [];
+    pendingUserMessageQueueRef.current[chatId] = [...queue, messageId];
+  }, []);
+
+  const transferPendingUserQueue = useCallback((fromChatId: string, toChatId: string) => {
+    if (!fromChatId || !toChatId || fromChatId === toChatId) {
+      return;
+    }
+
+    const fromQueue = pendingUserMessageQueueRef.current[fromChatId] ?? [];
+    const toQueue = pendingUserMessageQueueRef.current[toChatId] ?? [];
+
+    if (fromQueue.length === 0) {
+      return;
+    }
+
+    pendingUserMessageQueueRef.current[toChatId] = [...toQueue, ...fromQueue];
+    delete pendingUserMessageQueueRef.current[fromChatId];
+  }, []);
+
+  const markForServerHistoryReplace = useCallback((chatId: string) => {
+    shouldReplaceWithServerHistoryRef.current[chatId] = true;
+  }, []);
+
+  const dequeuePendingUserMessage = useCallback((chatId: string, content?: string) => {
+    const queue = pendingUserMessageQueueRef.current[chatId] ?? [];
+
+    if (queue.length === 0) {
+      return null;
+    }
+
+    const messages = useChatStore.getState().chats[chatId] ?? [];
+    const normalizedContent = content?.trim();
+
+    const validQueue = queue.filter((messageId) =>
+      messages.some((message) => message.id === messageId && message.role === "user" && message.status === "sending"),
+    );
+
+    pendingUserMessageQueueRef.current[chatId] = validQueue;
+
+    if (validQueue.length === 0) {
+      return null;
+    }
+
+    let targetQueueIndex = 0;
+
+    if (normalizedContent) {
+      const normalized = normalizedContent.replace(/\s+/g, " ");
+      const matchedIndex = validQueue.findIndex((messageId) => {
+        const message = messages.find((item) => item.id === messageId);
+        return message?.content.trim().replace(/\s+/g, " ") === normalized;
+      });
+
+      if (matchedIndex >= 0) {
+        targetQueueIndex = matchedIndex;
+      }
+    }
+
+    const [messageId] = validQueue.splice(targetQueueIndex, 1);
+    pendingUserMessageQueueRef.current[chatId] = validQueue;
+    return messageId ?? null;
+  }, []);
+
+  const releaseSocketRouteSwitch = useCallback(() => {
+    deferSocketRouteSwitchRef.current = false;
+  }, []);
+
+  const getAssistantAnswerText = useCallback((payload: ServerPayload) => {
+    const payloadData = asRecord(payload.data);
+    return firstString(
+      payload.answer,
+      payloadData?.answer,
+      payload.assistant_message,
+      payloadData?.assistant_message,
+      payload.response,
+      payloadData?.response,
+      payload.reply,
+      payloadData?.reply,
+      payload.message,
+      payloadData?.message,
+      payload.chunk,
+      payloadData?.chunk,
+      payload.text,
+      payloadData?.text,
+      payload.content,
+      payloadData?.content,
+    );
+  }, []);
+
+  const failPendingUserMessages = useCallback(
+    (chatId: string | null, content?: string) => {
+      if (!chatId) {
+        return;
+      }
+
+      const optimisticId = dequeuePendingUserMessage(chatId, content);
+
+      if (optimisticId) {
+        markMessageStatus(chatId, optimisticId, "error");
+        return;
+      }
+
+      markLatestPendingUserMessageError(chatId, content ? { content } : undefined);
+    },
+    [dequeuePendingUserMessage, markLatestPendingUserMessageError, markMessageStatus],
+  );
+
+  const failAllPendingUserMessages = useCallback(
+    (chatId: string | null) => {
+      if (!chatId) {
+        return;
+      }
+
+      let didMarkAny = false;
+      let optimisticId = dequeuePendingUserMessage(chatId);
+
+      while (optimisticId) {
+        didMarkAny = true;
+        markMessageStatus(chatId, optimisticId, "error");
+        optimisticId = dequeuePendingUserMessage(chatId);
+      }
+
+      if (!didMarkAny) {
+        markLatestPendingUserMessageError(chatId);
+      }
+    },
+    [dequeuePendingUserMessage, markLatestPendingUserMessageError, markMessageStatus],
+  );
 
   const resetAssistantRuntime = useCallback(() => {
     if (typingTimerRef.current) {
@@ -383,6 +589,45 @@ const useChatWebSocketInternal = (): ChatWebSocketValue => {
     assistantMessageIdRef.current = null;
     assistantChatIdRef.current = null;
   }, []);
+
+  const removeAssistantLivePlaceholders = useCallback(
+    (chatId: string, predicate?: (message: ChatMessage) => boolean) => {
+      const messages = useChatStore.getState().chats[chatId] ?? [];
+      const toRemove = messages.filter((message) => {
+        if (message.role !== "assistant") {
+          return false;
+        }
+
+        if (message.status !== "thinking" && message.status !== "typing") {
+          return false;
+        }
+
+        if (!message.id.startsWith("assistant-live-")) {
+          return false;
+        }
+
+        return predicate ? predicate(message) : true;
+      });
+
+      if (toRemove.length === 0) {
+        return;
+      }
+
+      toRemove.forEach((message) => {
+        removeMessage(chatId, message.id);
+      });
+
+      if (
+        assistantChatIdRef.current === chatId &&
+        assistantMessageIdRef.current &&
+        toRemove.some((message) => message.id === assistantMessageIdRef.current)
+      ) {
+        resetAssistantRuntime();
+        setAssistantState("idle");
+      }
+    },
+    [removeMessage, resetAssistantRuntime],
+  );
 
   const finalizeAssistantMessage = useCallback(
     (status: "done" | "cancelled" | "error", fallbackText?: string) => {
@@ -434,15 +679,21 @@ const useChatWebSocketInternal = (): ChatWebSocketValue => {
   );
 
   const setAssistantIdle = useCallback(() => {
+    releaseSocketRouteSwitch();
     setAssistantState("idle");
     resetAssistantRuntime();
-  }, [resetAssistantRuntime]);
+  }, [releaseSocketRouteSwitch, resetAssistantRuntime]);
 
   const handleHistoryLoaded = useCallback(
     (payload: ServerPayload, targetChatId: string) => {
       const historyMessages = sortByCreatedAtAscending(extractHistoryMessages(payload, targetChatId));
+      const shouldForceReplace = Boolean(shouldReplaceWithServerHistoryRef.current[targetChatId]);
 
       if (historyMessages.length === 0) {
+        if (shouldForceReplace) {
+          replaceMessages(targetChatId, []);
+          delete shouldReplaceWithServerHistoryRef.current[targetChatId];
+        }
         historyLoadedRef.current[targetChatId] = true;
         return;
       }
@@ -450,15 +701,24 @@ const useChatWebSocketInternal = (): ChatWebSocketValue => {
       const existingMessages = useChatStore.getState().chats[targetChatId] ?? [];
       const shouldMergeWithExisting = existingMessages.length > 0;
 
-      if (!historyLoadedRef.current[targetChatId] && !shouldMergeWithExisting) {
+      if (shouldForceReplace || (!historyLoadedRef.current[targetChatId] && !shouldMergeWithExisting)) {
         replaceMessages(targetChatId, historyMessages);
+        delete shouldReplaceWithServerHistoryRef.current[targetChatId];
       } else {
         addOrUpdateMessages(targetChatId, historyMessages);
       }
 
+      const hasFinalAssistantResponse = historyMessages.some(
+        (message) => message.role === "assistant" && message.status === "done" && Boolean(message.content.trim()),
+      );
+
+      if (hasFinalAssistantResponse) {
+        removeAssistantLivePlaceholders(targetChatId);
+      }
+
       historyLoadedRef.current[targetChatId] = true;
     },
-    [addOrUpdateMessages, replaceMessages],
+    [addOrUpdateMessages, removeAssistantLivePlaceholders, replaceMessages],
   );
 
   const startTypingAnimation = useCallback(
@@ -543,36 +803,57 @@ const useChatWebSocketInternal = (): ChatWebSocketValue => {
       return;
     }
 
-    const wsUrl = buildWsUrl(baseUrl, token, serverRouteChatId);
+    const wsUrl = buildWsUrl(baseUrl, token, socketRouteChatId);
     const ws = new WebSocket(wsUrl);
+    let isIntentionalClose = false;
     wsRef.current = ws;
 
-    if (routeChatId) {
-      createChat(routeChatId);
-      pendingLocalChatIdRef.current = routeChatId;
+    const currentRouteChatId = routeChatIdRef.current;
+
+    if (currentRouteChatId) {
+      createChat(currentRouteChatId);
+      pendingLocalChatIdRef.current = currentRouteChatId;
     }
 
     ws.onopen = () => {
-      if (serverRouteChatId) {
-        console.log(`[WS] connected to existing chat ${serverRouteChatId}: ${wsUrl}`);
+      if (socketRouteChatId) {
+        console.log(`[WS] connected to existing chat ${socketRouteChatId}: ${wsUrl}`);
       }
-      setIsHistoryLoading(Boolean(serverRouteChatId));
+      setIsHistoryLoading(Boolean(socketRouteChatId));
       setIsConnected(true);
       setErrorMessage(null);
     };
 
     ws.onclose = () => {
       setIsConnected(false);
+      if (isIntentionalClose) {
+        return;
+      }
+      const currentChatId = activeChatIdRef.current || pendingLocalChatIdRef.current;
+      failAllPendingUserMessages(currentChatId);
+      const currentAssistantChatId = assistantChatIdRef.current;
+      if (currentAssistantChatId) {
+        removeAssistantLivePlaceholders(currentAssistantChatId);
+      }
+      setAssistantIdle();
     };
 
     ws.onerror = () => {
       setErrorMessage(GENERIC_ERROR_TEXT);
       setIsHistoryLoading(false);
+      const currentChatId = activeChatIdRef.current || pendingLocalChatIdRef.current;
+      failAllPendingUserMessages(currentChatId);
+      const currentAssistantChatId = assistantChatIdRef.current;
+      if (currentAssistantChatId) {
+        removeAssistantLivePlaceholders(currentAssistantChatId);
+      }
+      setAssistantIdle();
     };
 
     ws.onmessage = (event) => {
-      if (serverRouteChatId) {
-        console.log(`[WS] message for chat ${serverRouteChatId}:`, event.data);
+      console.log(event)
+      if (socketRouteChatId) {
+        console.log(`[WS] message for chat ${socketRouteChatId}:`, event.data);
       }
 
       let payload: ServerPayload;
@@ -588,7 +869,10 @@ const useChatWebSocketInternal = (): ChatWebSocketValue => {
 
       const incomingChatId = extractIncomingChatId(payload);
       const resolvedChatId =
-        incomingChatId || serverRouteChatId || activeChatIdRef.current || pendingLocalChatIdRef.current;
+        incomingChatId ||
+        serverRouteChatIdRef.current ||
+        activeChatIdRef.current ||
+        pendingLocalChatIdRef.current;
       const title = firstString(payload.title);
 
       if (incomingChatId) {
@@ -601,6 +885,9 @@ const useChatWebSocketInternal = (): ChatWebSocketValue => {
           !/^\d+$/.test(previousChatId)
         ) {
           linkChatId(previousChatId, incomingChatId, title || undefined);
+          transferPendingUserQueue(previousChatId, incomingChatId);
+          markForServerHistoryReplace(incomingChatId);
+          deferSocketRouteSwitchRef.current = true;
         } else {
           createChat(incomingChatId, title || undefined);
         }
@@ -608,7 +895,11 @@ const useChatWebSocketInternal = (): ChatWebSocketValue => {
         pendingLocalChatIdRef.current = incomingChatId;
         setActiveChatId(incomingChatId);
 
-        if (!hasActiveServerChatId && pathname === "/chats") {
+        if (
+          !hasActiveServerChatId &&
+          pathnameRef.current.startsWith("/chats") &&
+          routeChatIdRef.current !== incomingChatId
+        ) {
           router.push(`/chats/${incomingChatId}`);
         }
       }
@@ -638,9 +929,11 @@ const useChatWebSocketInternal = (): ChatWebSocketValue => {
 
         const existingMessages = useChatStore.getState().chats[historyChatId] ?? [];
         const shouldMergeWithExisting = existingMessages.length > 0;
+        const shouldForceReplace = Boolean(shouldReplaceWithServerHistoryRef.current[historyChatId]);
 
-        if (!historyLoadedRef.current[historyChatId] && !shouldMergeWithExisting) {
+        if (shouldForceReplace || (!historyLoadedRef.current[historyChatId] && !shouldMergeWithExisting)) {
           replaceMessages(historyChatId, normalizedMessages);
+          delete shouldReplaceWithServerHistoryRef.current[historyChatId];
         } else {
           addOrUpdateMessages(historyChatId, normalizedMessages);
         }
@@ -654,7 +947,7 @@ const useChatWebSocketInternal = (): ChatWebSocketValue => {
         historyLoadedRef.current[historyChatId] = true;
         setIsHistoryLoading(false);
 
-        if (pathname.startsWith("/chats") && routeChatId !== historyChatId) {
+        if (pathnameRef.current.startsWith("/chats") && routeChatIdRef.current !== historyChatId) {
           router.push(`/chats/${historyChatId}`);
         }
 
@@ -670,7 +963,10 @@ const useChatWebSocketInternal = (): ChatWebSocketValue => {
 
           if (pendingChatId && pendingChatId !== incomingChatId) {
             linkChatId(pendingChatId, incomingChatId, title || undefined);
-            if (pathname.startsWith("/chats")) {
+            transferPendingUserQueue(pendingChatId, incomingChatId);
+            markForServerHistoryReplace(incomingChatId);
+            deferSocketRouteSwitchRef.current = true;
+            if (pathnameRef.current.startsWith("/chats")) {
               router.push(`/chats/${incomingChatId}`);
             }
           } else {
@@ -698,8 +994,11 @@ const useChatWebSocketInternal = (): ChatWebSocketValue => {
 
         if (pendingChatId && pendingChatId !== incomingChatId) {
           linkChatId(pendingChatId, incomingChatId, title || undefined);
+          transferPendingUserQueue(pendingChatId, incomingChatId);
+          markForServerHistoryReplace(incomingChatId);
+          deferSocketRouteSwitchRef.current = true;
 
-          if (pathname.startsWith("/chats")) {
+          if (pathnameRef.current.startsWith("/chats")) {
             router.push(`/chats/${incomingChatId}`);
           }
         } else {
@@ -724,9 +1023,21 @@ const useChatWebSocketInternal = (): ChatWebSocketValue => {
 
       if (type === "user_message_saved" && resolvedChatId) {
         const content = firstString(payload.message);
+        const payloadData = asRecord(payload.data);
+        const serverId = firstNumber(
+          payload.message_id,
+          payload.messageId,
+          payload.id,
+          payloadData?.message_id,
+          payloadData?.messageId,
+          payloadData?.id,
+        );
+        const optimisticId = dequeuePendingUserMessage(resolvedChatId, content);
         markUserMessageSaved(resolvedChatId, {
+          optimisticId: optimisticId ?? undefined,
           content,
           created_at: firstString(payload.created_at, payload.createdAt, payload.timestamp),
+          serverId,
         });
 
         if (title) {
@@ -769,10 +1080,11 @@ const useChatWebSocketInternal = (): ChatWebSocketValue => {
           setChatTitle(resolvedChatId, title);
         }
 
-        const answer = firstString(payload.answer);
+        const answer = getAssistantAnswerText(payload);
 
         if (!answer) {
           finalizeAssistantMessage("error", GENERIC_ERROR_TEXT);
+          removeAssistantLivePlaceholders(resolvedChatId, (message) => message.content.trim() === "");
           setErrorMessage(GENERIC_ERROR_TEXT);
           setAssistantIdle();
           return;
@@ -786,8 +1098,13 @@ const useChatWebSocketInternal = (): ChatWebSocketValue => {
 
       if (type === "error") {
         const message = firstString(payload.message, payload.detail, payload.error) || GENERIC_ERROR_TEXT;
+        const targetChatId = resolvedChatId || activeChatIdRef.current || pendingLocalChatIdRef.current;
         setErrorMessage(message);
         finalizeAssistantMessage("error", message);
+        failPendingUserMessages(targetChatId, firstString(payload.user_message));
+        if (targetChatId) {
+          removeAssistantLivePlaceholders(targetChatId, (assistantMessage) => !assistantMessage.content.trim());
+        }
         setIsHistoryLoading(false);
         setAssistantIdle();
       }
@@ -800,7 +1117,12 @@ const useChatWebSocketInternal = (): ChatWebSocketValue => {
       }
 
       setAssistantState("idle");
+      const currentAssistantChatId = assistantChatIdRef.current;
+      if (currentAssistantChatId) {
+        removeAssistantLivePlaceholders(currentAssistantChatId);
+      }
       resetAssistantRuntime();
+      isIntentionalClose = true;
 
       ws.close();
 
@@ -814,24 +1136,43 @@ const useChatWebSocketInternal = (): ChatWebSocketValue => {
   }, [
     addOrUpdateMessages,
     createChat,
+    dequeuePendingUserMessage,
+    failAllPendingUserMessages,
+    failPendingUserMessages,
     finalizeAssistantMessage,
+    getAssistantAnswerText,
     handleHistoryLoaded,
     linkChatId,
+    markForServerHistoryReplace,
     markUserMessageSaved,
-    pathname,
+    removeAssistantLivePlaceholders,
     queryClient,
     replaceMessages,
-    routeChatId,
-    serverRouteChatId,
+    socketRouteChatId,
     router,
     session?.access,
     setAssistantIdle,
     setChatTitle,
     startTypingAnimation,
+    transferPendingUserQueue,
     ensureAssistantMessage,
     resetAssistantRuntime,
     setActiveChatId,
   ]);
+
+  useEffect(() => {
+    if (deferSocketRouteSwitchRef.current) {
+      return;
+    }
+
+    const desiredSocketChatId = serverRouteChatId ?? null;
+    if (desiredSocketChatId === socketRouteChatId) {
+      return;
+    }
+
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setSocketRouteChatId(desiredSocketChatId);
+  }, [assistantState, serverRouteChatId, socketRouteChatId]);
 
   const sendMessage = useCallback(
     ({ message, chatId }: SendMessageInput) => {
@@ -855,8 +1196,7 @@ const useChatWebSocketInternal = (): ChatWebSocketValue => {
       const targetChatId =
         chatId?.trim() ||
         routeChatId ||
-        pendingLocalChatIdRef.current ||
-        (pathname === "/chats" ? NEW_CHAT_LOCAL_KEY : null);
+        (pathname === "/chats" ? NEW_CHAT_LOCAL_KEY : pendingLocalChatIdRef.current);
 
       if (!targetChatId) {
         setErrorMessage("شناسه گفتگو نامعتبر است.");
@@ -869,7 +1209,11 @@ const useChatWebSocketInternal = (): ChatWebSocketValue => {
       setActiveChatId(targetChatId);
 
       createChat(targetChatId);
-      addOptimisticUserMessage(targetChatId, normalizedMessage);
+      const optimisticMessage = addOptimisticUserMessage(targetChatId, normalizedMessage);
+
+      if (optimisticMessage) {
+        enqueuePendingUserMessage(targetChatId, optimisticMessage.id);
+      }
 
       ws.send(
         JSON.stringify({
@@ -880,7 +1224,15 @@ const useChatWebSocketInternal = (): ChatWebSocketValue => {
 
       return true;
     },
-    [addOptimisticUserMessage, createChat, isAssistantBusy, pathname, routeChatId, setActiveChatId],
+    [
+      addOptimisticUserMessage,
+      createChat,
+      enqueuePendingUserMessage,
+      isAssistantBusy,
+      pathname,
+      routeChatId,
+      setActiveChatId,
+    ],
   );
 
   return useMemo(
