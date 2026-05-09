@@ -35,7 +35,7 @@ const MobileInput = ({ value, onChange, onSubmit, disabled, error, showSubmitBut
             onClick={onSubmit}
             disabled={disabled}
             aria-label="دریافت کد تایید"
-            className="grid size-9 shrink-0 place-items-center rounded-full bg-[#24157d] text-white outline-none transition hover:scale-[1.03] focus-visible:ring-2 focus-visible:ring-[#24157d]/45 focus-visible:ring-offset-2 focus-visible:ring-offset-transparent disabled:cursor-not-allowed disabled:opacity-70 dark:bg-[#12d7ce] dark:text-[#181b55]"
+            className="grid size-9 shrink-0 place-items-center rounded-full bg-[#24157d] text-white! outline-none transition hover:scale-[1.03] focus-visible:ring-2 focus-visible:ring-[#24157d]/45 focus-visible:ring-offset-2 focus-visible:ring-offset-transparent disabled:cursor-not-allowed disabled:opacity-70 dark:bg-[#12d7ce] dark:text-[#181b55]"
           >
             <ArrowLeft className="size-4" />
           </button>

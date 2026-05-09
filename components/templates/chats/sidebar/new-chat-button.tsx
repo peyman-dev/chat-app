@@ -19,7 +19,7 @@ const NewChatButton = ({ onClick, collapsed = false }: NewChatButtonProps) => {
         "group mt-3 flex h-12 items-center justify-center overflow-hidden rounded-2xl border border-white/18 bg-white/18 px-4 text-sm font-semibold text-[#0f5fb1] outline-none backdrop-blur-md",
         "shadow-[inset_0_1px_0_rgba(255,255,255,0.22),0_10px_24px_rgba(63,86,145,0.24)]",
         "transition-colors hover:bg-white/26 focus-visible:ring-2 focus-visible:ring-[#81beff]/70",
-        "dark:border-white/14 dark:bg-white/9 dark:text-[#d5e9ff] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.18),0_12px_28px_rgba(4,8,34,0.5)] dark:hover:bg-white/14",
+        "dark:border-white/14 dark:bg-white/9 dark:text-[#d5e9ff]! dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.18),0_12px_28px_rgba(4,8,34,0.5)] dark:hover:bg-white/14",
         collapsed ? "w-12 px-0" : "w-full gap-2.5",
       )}
       title={collapsed ? "صفحه چت جدید" : undefined}

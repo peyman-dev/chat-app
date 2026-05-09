@@ -314,6 +314,12 @@ type GetContentsPageInput = {
     categoryId?: string;
 };
 
+type SearchServicesInput = {
+    q?: string;
+    page?: number;
+    pageSize?: number;
+};
+
 type GetContentsPageResponse = {
     success: boolean;
     message?: string;
@@ -645,6 +651,123 @@ export const getCategories = async () => {
         return {
             success: false,
             error
+        }
+    }
+}
+
+
+
+// /admin/search/
+// GET /admin/services/search/?q=ضمانت
+
+export const searchServices = async ({
+    q,
+    page = 1,
+    pageSize = 20,
+}: SearchServicesInput = {}): Promise<GetContentsPageResponse> => {
+    const safePage = Number.isFinite(page) && page > 0 ? page : 1;
+    const safePageSize = Number.isFinite(pageSize) && pageSize > 0 ? pageSize : 20;
+    const safeQ = typeof q === "string" ? q.trim() : "";
+
+    try {
+        const headers = await getAuthorizedHeaders();
+        if (!headers) {
+            return {
+                success: false,
+                message: "توکن دسترسی نامعتبر است",
+                data: buildFallbackPageData(safePage, safePageSize),
+            };
+        }
+
+        const response = await request.get("/admin/search/", {
+            headers,
+            params: {
+                q: safeQ,
+            }
+        });
+
+        return {
+            success: true,
+            data: normalizeContentsPage(response.data, {
+                page: safePage,
+                pageSize: safePageSize,
+            }),
+        };
+    } catch (error) {
+        return {
+            success: false,
+            message: extractAxiosErrorMessage(error),
+            data: buildFallbackPageData(safePage, safePageSize),
+        };
+    }
+}
+
+
+// /admin/schedule/
+// admin_schedule_create
+
+
+// Every 24 hours (daily)
+// Runs once per day (e.g. midnight)
+// {
+// "minute": "0",
+// "hour": "0",
+// "day_of_week": "",
+// "day_of_month": "",
+// "month_of_year": "*"
+// }
+
+// Every 7 days (weekly)
+// {
+// "minute": "0",
+// "hour": "0",
+// "day_of_week": "0",
+// "day_of_month": "",
+// "month_of_year": ""
+// }
+// Every 14 days (bi-weekly)
+
+// 14-day intervals
+// {
+// "minute": "0",
+// "hour": "0",
+// "day_of_week": "",
+// "day_of_month": "/14",
+// "month_of_year": "*"
+// }
+
+// Every 30 days (monthly)
+// {
+// "minute": "0",
+// "hour": "0",
+// "day_of_week": "",
+// "day_of_month": "1",
+// "month_of_year": ""
+// }
+
+
+export const setSchedule = async (payload: {
+    minute: string,
+    hour: string,
+    day_of_week: string,
+    day_of_month: string,
+    month_of_year: string,
+}) => {
+    try {
+        const session = await getSession();
+        const accessToken = await session?.access;
+
+        const response = await request.post("/admin/schedule", payload, {
+            headers: {
+                Authorization: `Bearer ${accessToken}`
+            }
+        })
+        const data = await response.data
+        return data
+    } catch (error) {
+        return {
+            success: false,
+            
         }
     }
 }

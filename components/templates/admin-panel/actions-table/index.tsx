@@ -1,22 +1,23 @@
 "use client";
 
-import { getContentsPage } from "@/app/actions";
+import { getContentsPage, searchServices } from "@/app/actions";
+import SearchFilterPanel from "@/components/templates/admin-panel/shared/search-filter-panel";
 import TabsSelector from "@/components/templates/admin-panel/tabs-selector";
 import type { AdminCategoryNode } from "@/lib/admin-categories";
 import {
   ActionIcon,
-  Badge,
   Menu,
   Pagination,
   Select,
   Text,
   Tooltip,
 } from "@mantine/core";
+import { useDebouncedValue } from "@mantine/hooks";
 import { IconDots, IconEye, IconPencil, IconRefresh } from "@tabler/icons-react";
 import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
 import { motion } from "motion/react";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
 
 type GridItem = {
   id: string;
@@ -83,36 +84,17 @@ const resolveBranchState = (
   };
 };
 
-const getPathLabels = (root: AdminCategoryNode | null, pathIds: string[]) => {
-  if (!root || pathIds.length === 0) {
-    return [] as string[];
-  }
-
-  const labels: string[] = [root.name];
-  let cursor = root;
-
-  for (let index = 1; index < pathIds.length; index += 1) {
-    const next = cursor.children.find((child) => child.id === pathIds[index]);
-    if (!next) {
-      break;
-    }
-
-    labels.push(next.name);
-    cursor = next;
-  }
-
-  return labels;
-};
-
 const ActionsTable = ({ rootCategory, className }: ActionsTableProps) => {
   const router = useRouter();
   const queryClient = useQueryClient();
 
   const [selectedByParent, setSelectedByParent] = useState<Record<string, string>>({});
   const [activeItemId, setActiveItemId] = useState<string | null>(null);
-  const [paginationByCategory, setPaginationByCategory] = useState<
+  const [paginationByBucket, setPaginationByBucket] = useState<
     Record<string, { page: number; pageSize: number }>
   >({});
+  const [searchQuery, setSearchQuery] = useState("");
+  const [debouncedSearchQuery] = useDebouncedValue(searchQuery, 350);
   const [isPageTransitionPending, startPageTransition] = useTransition();
 
   const branch = useMemo(() => {
@@ -120,18 +102,43 @@ const ActionsTable = ({ rootCategory, className }: ActionsTableProps) => {
   }, [rootCategory, selectedByParent]);
 
   const activeLeafId = branch.leafNode?.id ?? "";
-  const currentPagination = paginationByCategory[activeLeafId] ?? {
+  const normalizedQuery = debouncedSearchQuery.trim();
+  const isSearchMode = normalizedQuery.length > 0;
+
+  const listBucketKey = useMemo(() => {
+    return isSearchMode ? `search:global:${normalizedQuery}` : `list:${activeLeafId}`;
+  }, [activeLeafId, isSearchMode, normalizedQuery]);
+
+  const currentPagination = paginationByBucket[listBucketKey] ?? {
     page: 1,
     pageSize: DEFAULT_PAGE_SIZE,
   };
 
+  const fetchListData = useCallback(
+    ({ page, pageSize }: { page: number; pageSize: number }) => {
+      if (isSearchMode) {
+        return searchServices({
+          q: normalizedQuery || undefined,
+          page,
+          pageSize,
+        });
+      }
+
+      return getContentsPage({
+        page,
+        pageSize,
+        categoryId: activeLeafId || undefined,
+      });
+    },
+    [activeLeafId, isSearchMode, normalizedQuery],
+  );
+
   const contentsQuery = useQuery({
-    queryKey: ["admin-contents", activeLeafId || "all", currentPagination.page, currentPagination.pageSize],
+    queryKey: ["admin-contents", listBucketKey, currentPagination.page, currentPagination.pageSize],
     queryFn: () =>
-      getContentsPage({
+      fetchListData({
         page: currentPagination.page,
         pageSize: currentPagination.pageSize,
-        categoryId: activeLeafId || undefined,
       }),
     placeholderData: keepPreviousData,
     staleTime: 10_000,
@@ -147,7 +154,7 @@ const ActionsTable = ({ rootCategory, className }: ActionsTableProps) => {
   }));
 
   useEffect(() => {
-    if (!pageData?.pagination || !activeLeafId) {
+    if (!pageData?.pagination) {
       return;
     }
 
@@ -159,39 +166,30 @@ const ActionsTable = ({ rootCategory, className }: ActionsTableProps) => {
     const nextPage = currentPage + 1;
 
     queryClient.prefetchQuery({
-      queryKey: ["admin-contents", activeLeafId, nextPage, currentPagination.pageSize],
+      queryKey: ["admin-contents", listBucketKey, nextPage, currentPagination.pageSize],
       queryFn: () =>
-        getContentsPage({
+        fetchListData({
           page: nextPage,
           pageSize: currentPagination.pageSize,
-          categoryId: activeLeafId,
         }),
       staleTime: 60_000,
     });
-  }, [activeLeafId, currentPagination.pageSize, pageData?.pagination, queryClient]);
+  }, [currentPagination.pageSize, fetchListData, listBucketKey, pageData?.pagination, queryClient]);
 
   const handleCategoryLevelChange = (parentId: string, nextValue: string) => {
     setSelectedByParent((current) => ({
       ...current,
       [parentId]: nextValue,
     }));
-
-    setPaginationByCategory((current) => ({
-      ...current,
-      [nextValue]: {
-        page: 1,
-        pageSize: current[nextValue]?.pageSize ?? DEFAULT_PAGE_SIZE,
-      },
-    }));
   };
 
   const handlePageChange = (nextPage: number) => {
     startPageTransition(() => {
-      setPaginationByCategory((current) => ({
+      setPaginationByBucket((current) => ({
         ...current,
-        [activeLeafId]: {
+        [listBucketKey]: {
           page: nextPage,
-          pageSize: current[activeLeafId]?.pageSize ?? currentPagination.pageSize,
+          pageSize: current[listBucketKey]?.pageSize ?? currentPagination.pageSize,
         },
       }));
     });
@@ -205,20 +203,15 @@ const ActionsTable = ({ rootCategory, className }: ActionsTableProps) => {
     }
 
     startPageTransition(() => {
-      setPaginationByCategory((current) => ({
+      setPaginationByBucket((current) => ({
         ...current,
-        [activeLeafId]: {
+        [listBucketKey]: {
           page: 1,
           pageSize: parsed,
         },
       }));
     });
   };
-
-
-  const pathLabels = useMemo(() => {
-    return getPathLabels(rootCategory, branch.resolvedPathIds);
-  }, [branch.resolvedPathIds, rootCategory]);
 
   const showEmptyState = !contentsQuery.isPending && mappedItems.length === 0;
 
@@ -238,38 +231,33 @@ const ActionsTable = ({ rootCategory, className }: ActionsTableProps) => {
     <section className={className}>
       <div className="container">
         <div className="rounded-3xl bg-[#ECEEF0] p-3 md:p-4">
-          {/* <div className="mb-4 flex flex-wrap items-center gap-2 rounded-2xl bg-white p-3">
-            {pathLabels.map((label, index) => (
-              <Badge
-                key={`${label}-${index}`}
-                variant={index === pathLabels.length - 1 ? "filled" : "light"}
-                color={index === pathLabels.length - 1 ? "indigo" : "gray"}
-                radius="sm"
-                size="lg"
-              >
-                {label}
-              </Badge>
-            ))}
-          </div> */}
+          <SearchFilterPanel
+            value={searchQuery}
+            onChange={setSearchQuery}
+            resultCount={pageData?.pagination.totalCount ?? mappedItems.length}
+            isLoading={contentsQuery.isFetching}
+          />
 
-          <div className="space-y-3">
-            {branch.levels.map((level, index) => (
-              <motion.div
-                key={`${level.parentId}-${index}`}
-                initial={{ opacity: 0, y: 8 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.2 }}
-                className="rounded-2xl bg-[#F7F8FA] p-2"
-              >
-                <TabsSelector
-                  items={toTabItems(level.items)}
-                  value={level.selectedId}
-                  onChange={(nextValue) => handleCategoryLevelChange(level.parentId, nextValue)}
-                  itemsPerPage={5}
-                />
-              </motion.div>
-            ))}
-          </div>
+          {!isSearchMode ? (
+            <div className="mt-4 space-y-3">
+              {branch.levels.map((level, index) => (
+                <motion.div
+                  key={`${level.parentId}-${index}`}
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.2 }}
+                  className="rounded-2xl bg-[#F7F8FA] p-2"
+                >
+                  <TabsSelector
+                    items={toTabItems(level.items)}
+                    value={level.selectedId}
+                    onChange={(nextValue) => handleCategoryLevelChange(level.parentId, nextValue)}
+                    itemsPerPage={5}
+                  />
+                </motion.div>
+              ))}
+            </div>
+          ) : null}
 
           <div className="mt-4 rounded-2xl bg-white p-3 md:p-4">
             {contentsQuery.isError || !querySuccess ? (
@@ -293,7 +281,7 @@ const ActionsTable = ({ rootCategory, className }: ActionsTableProps) => {
                 >
                   {showEmptyState ? (
                     <p className="col-span-full py-10 text-center text-base font-semibold text-[#64748B]">
-                      آیتمی برای نمایش در این زیرشاخه وجود ندارد.
+                      آیتمی برای نمایش وجود ندارد.
                     </p>
                   ) : (
                     mappedItems.map((item) => {

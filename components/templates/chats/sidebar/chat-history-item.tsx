@@ -19,7 +19,7 @@ const ChatHistoryItem = ({ label, isActive = false, onClick }: ChatHistoryItemPr
       className={cn(
         "w-full rounded-xl border border-transparent px-3.5 py-2 text-right text-base font-medium outline-none",
         "text-[#4a5f99] transition-colors hover:border-white/20 hover:bg-white/22 hover:text-[#224f95] focus-visible:ring-2 focus-visible:ring-[#81beff]/70",
-        "dark:text-[#b9c8f2] dark:hover:border-white/12 dark:hover:bg-white/9 dark:hover:text-[#e7f0ff]",
+        "dark:text-[#b9c8f2]! dark:hover:border-white/12 dark:hover:bg-white/9 dark:hover:text-[#e7f0ff]",
         isActive &&
           "border-[#8cb4eb55] bg-white/35 text-[#1c4f9a] dark:border-[#a8c4ff52] dark:bg-white/14 dark:text-[#f2f7ff]",
       )}
